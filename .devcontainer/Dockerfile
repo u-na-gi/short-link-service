@@ -13,12 +13,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=en_US.UTF-8
 
 # --- base packages + JDK ------------------------------------------------------
-# JDK は Ubuntu 公式リポジトリの openjdk-25 (LTS)。Metals は JDK 17 以上を要求する
+# JDK は 21 に固定。Play 3.0 のサポート対象は Java LTS 11/17/21 で 25 は対象外
+# (https://www.playframework.com/documentation/3.0.x/Requirements)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg \
         git openssh-client \
         sudo less procps locales vim unzip jq \
-        openjdk-25-jdk-headless \
+        openjdk-21-jdk-headless \
+        openjdk-21-source \
     && sed -i 's/# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen \
     && locale-gen \
     && rm -rf /var/lib/apt/lists/*
@@ -54,8 +56,6 @@ USER ${USERNAME}
 WORKDIR /app
 
 # --- named volume のマウント先 ------------------------------------------------
-# named volume は初回作成時にイメージ側ディレクトリの所有権を引き継ぐので、
-# sbt / ivy / coursier のキャッシュ先と Claude Code の設定先は dev 所有で先に作っておく
 RUN mkdir -p \
         /home/${USERNAME}/.sbt \
         /home/${USERNAME}/.ivy2 \
@@ -63,19 +63,9 @@ RUN mkdir -p \
         /home/${USERNAME}/.claude
 
 
-# ~/.config/gh(bind mount)のマウント先をあらかじめ dev 所有で焼いておく。
-# 無いとランタイムが親 ~/.config ごと root で作ってしまう。なお gh dir 自体の
-# 所有権はホスト側ディレクトリで決まるので、そちらは devcontainer.json の
-# initializeCommand が担保する(bind mount は named volume と違い
-# イメージ内の所有権を引き継がない)
 RUN mkdir -p /home/${USERNAME}/.config/gh
 
 # --- Claude Code -------------------------------------------------------------------
-# 公式の native installer。本体は ~/.local/share/claude/versions/ に置かれ
-# ~/.local/bin/claude がそこへの symlink になる。認証・設定 (~/.claude) は
-# compose.yaml の named volume 側なので、本体はイメージに焼いても衝突しない。
-# ~/.local/bin は非ログインシェル (docker exec / VS Code のターミナル) では
-# .profile を通らず PATH に乗らないので ENV で通しておく
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
 
