@@ -1,0 +1,42 @@
+# url-shorter-sevice devcontainer
+#
+# dev サービス 1 つ。コンテナの中に入って sbt で開発する。
+# Docker はイメージに入れず、devcontainer.json の docker-outside-of-docker feature が
+# ホストの /var/run/docker.sock を使う CLI を足す。
+services:
+  dev:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    command: sleep infinity
+    environment:
+      CLAUDE_CONFIG_DIR: /home/dev/.claude
+    volumes:
+      - ..:/app
+
+      # ---- sbt のキャッシュ (コンテナを作り直しても消えない) ----
+      - sbt-cache:/home/dev/.sbt
+      - ivy2-cache:/home/dev/.ivy2
+      - coursier-cache:/home/dev/.cache/coursier
+
+      # ---- git / SSH ----
+      - ${HOME}/.ssh:/home/dev/.ssh
+      - ${HOME}/.gitconfig:/home/dev/.gitconfig:ro
+
+      # ---- gh の認証情報 (ホストと共有、コンテナ再作成後も再ログイン不要) ----
+      # ディレクトリ単位の bind mount なので、~/.claude.json のような inode 問題は起きない。
+      # ホスト側ディレクトリは devcontainer.json の initializeCommand がユーザー所有で作る
+      - ${HOME}/.config/gh:/home/dev/.config/gh
+
+      # ---- Claude Code の認証と設定 ----
+      # ~/.claude.json をファイル単位で bind mount すると、Claude Code が「一時ファイルに
+      # 書いて rename」で更新するたびに inode が入れ替わって壊れる (毎回ログインを求め
+      # られる)。ホストとは共有せず、named volume にディレクトリごと永続化する。
+      # CLAUDE_CONFIG_DIR を向けると .claude.json もこの中に置かれる
+      - claude-config:/home/dev/.claude
+
+volumes:
+  sbt-cache:
+  ivy2-cache:
+  coursier-cache:
+  claude-config:

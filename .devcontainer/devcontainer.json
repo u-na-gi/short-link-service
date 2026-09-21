@@ -1,0 +1,24 @@
+{
+  "name": "url-shorter-sevice",
+  "dockerComposeFile": "compose.yaml",
+  "service": "dev",
+  "workspaceFolder": "/app",
+  "remoteUser": "dev",
+
+  // コンテナ作成前にホスト側で実行される。bind mount 元がホストに無いと Docker が
+  // root 所有で自動作成し、コンテナ内から書けなくなる (gh auth の hosts.yml 等)。
+  // ~/.gitconfig はファイルなので、無ければ空で作っておく
+  "initializeCommand": "mkdir -p \"$HOME/.config/gh\" \"$HOME/.ssh\" && touch \"$HOME/.gitconfig\"",
+
+  // DooD (Docker outside of Docker): ホストの Docker デーモンをコンテナ内から使う
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "scalameta.metals"
+      ]
+    }
+  }
+}
