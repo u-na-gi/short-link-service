@@ -15,12 +15,16 @@
 
   // DooD (Docker outside of Docker): ホストの Docker デーモンをコンテナ内から使う
   "features": {
-    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "moby": false
+    }
   },
   "customizations": {
     "vscode": {
       "extensions": [
-        "scalameta.metals"
+        "scalameta.metals",
+        "esbenp.prettier-vscode",
+        "oxc.oxc-vscode"
       ]
     }
   }

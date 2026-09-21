@@ -1,5 +1,12 @@
 {
   "files.watcherExclude": {
     "**/target/**": true
+  },
+
+  // Metals に内蔵の Scalafmt で保存時整形する。設定は /app/.scalafmt.conf
+  // routes や Twirl テンプレートには整形器が無いので scala のみに限定する
+  "[scala]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "scalameta.metals"
   }
 }

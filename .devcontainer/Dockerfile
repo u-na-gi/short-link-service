@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM ubuntu:24.04
+FROM debian:trixie
 
 ARG USERNAME=dev
 ARG USER_UID=1000
@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg \
         git openssh-client \
         sudo less procps locales vim unzip jq \
+        make \
         openjdk-21-jdk-headless \
         openjdk-21-source \
     && sed -i 's/# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen \
@@ -43,11 +44,15 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
+# --- Node.js (LTS) ------------------------------------------------------------
+# setup_lts.x は NodeSource 側でその時点の Active LTS 系に解決される
+RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
 # --- dev user -----------------------------------------------------------------
-# ubuntu:24.04 は uid/gid 1000 の `ubuntu` ユーザーを最初から持っているので消して
-# 作り直す
-RUN userdel -r ubuntu \
-    && groupadd --gid ${USER_GID} ${USERNAME} \
+# debian:trixie は uid/gid 1000 のユーザーを持たないので、そのまま作れる
+RUN groupadd --gid ${USER_GID} ${USERNAME} \
     && useradd --uid ${USER_UID} --gid ${USER_GID} -m -s /bin/bash ${USERNAME} \
     && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} \
     && chmod 0440 /etc/sudoers.d/${USERNAME}
@@ -71,3 +76,9 @@ ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
 
 RUN printf '\n# custom aliases\nalias ccl='\''claude --dangerously-skip-permissions'\''\n' \
         >> /home/${USERNAME}/.bashrc
+
+# --- bun ----------------------------------------------------------------------
+# 公式インストーラ。~/.bun/bin に入る
+RUN curl -fsSL https://bun.sh/install | bash
+ENV BUN_INSTALL="/home/${USERNAME}/.bun"
+ENV PATH="${BUN_INSTALL}/bin:${PATH}"
