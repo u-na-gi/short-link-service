@@ -7,3 +7,11 @@ target
 /.project
 /.settings
 /RUNNING_PID
+
+# Metals / Bloop が自動生成するファイル
+/.bloop
+/project/.bloop
+/project/project/.bloop
+/project/metals.sbt
+/project/project/metals.sbt
+/project/project/project/metals.sbt
