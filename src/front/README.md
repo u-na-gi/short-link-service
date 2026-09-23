@@ -1,33 +1,158 @@
-# front
+# フロントエンド (`src/front`)
 
-URL を貼り付けると短縮 URL を返し、短縮 URL を貼り付けると元の URL を返す画面。ログインなし。Vite + React + TypeScript (bun)。
+URL の短縮および短縮 URL からの復元を行う 1 画面の Web アプリケーションです。ログイン不要で即座に利用できます。
 
-```sh
-bun install
-bun run dev        # http://localhost:5173
-bun run build      # 型チェック + dist/ に出力
-bun run test       # bun test (url.test.ts など)
-bun run format
+## 目次
+
+- [技術スタック](#技術スタック)
+- [ファイル構成と役割](#ファイル構成と役割)
+- [開発コマンド](#開発コマンド)
+- [開発用プロキシとサーバ接続](#開発用プロキシとサーバ接続)
+- [仕様・実装方針](#仕様実装方針)
+- [プロダクションビルド](#プロダクションビルド)
+
+---
+
+## 技術スタック
+
+| 分類                        | 採用技術               | バージョン / 補足 |
+| --------------------------- | ---------------------- | ----------------- |
+| ランタイム / パッケージ管理 | [Bun](https://bun.sh/) | 1.4+              |
+| UI ライブラリ               | React                  | 19.3              |
+| ビルドツール / 開発サーバ   | Vite                   | 8.3               |
+| 言語                        | TypeScript             | 7.0               |
+| コードフォーマッタ          | Prettier               | 3.9               |
+| テストランナー              | Bun Test               | `src/url.test.ts` |
+
+---
+
+## ファイル構成と役割
+
+```
+src/front/
+├── Dockerfile          # 開発用コンテナ定義 (oven/bun ベース)
+├── package.json        # 依存パッケージおよびスクリプト定義
+├── vite.config.ts      # Vite 設定 (プロキシ・待受ホスト定義)
+├── tsconfig.json       # TypeScript 設定
+├── index.html          # エントリ HTML
+└── src/
+    ├── main.tsx        # React アプリケーションのエントリポイント
+    ├── App.tsx         # メインコンポーネント (短縮フォーム・結果表示・コピー機能)
+    ├── ResolveForm.tsx # 復元フォームコンポーネント (短縮 URL からの元 URL 復元)
+    ├── api.ts          # API クライアント・レスポンス型定義・エラーメッセージ変換
+    ├── url.ts          # 送信前の URL 簡易バリデーション・エラー文言定義
+    ├── url.test.ts     # url.ts の単体テスト
+    └── styles.css      # スタイルシート
 ```
 
-普段はリポジトリルートの `make up` で、server と一緒にコンテナで起動する (`src/front/Dockerfile`)。
-ソースはマウントするので、編集は HMR で反映される。node_modules はコンテナ側のものを使う。
+### 主要ファイルの責務
 
-## ローカルの繋ぎ方
+- **`src/App.tsx`**:
+  - 画面上部の「短縮フォーム」と発行結果の表示を担当。
+  - 発行された短縮 URL のリンク表示、クリップボードへのコピー機能、元 URL の表示を行います。
+  - 画面下部に `ResolveForm` を配置します。
+- **`src/ResolveForm.tsx`**:
+  - 画面下部の「復元フォーム」と復元結果の表示を担当。
+  - 短縮 URL 全体を受け取り、元 URL を表示します。
+- **`src/url.ts`**:
+  - 送信前に「明らかに不正な入力値」を検知するバリデーションロジック (`findUrlProblem`)。
+  - サーバ側の `domain.Url` と対応させたエラー種別 (`UrlProblem`) を定義しています。
+- **`src/api.ts`**:
+  - バックエンド API (`/api/v1/links`, `/api/v1/links/resolve`) への通信を担当。
+  - サーバから返却される機械可読なエラーコード（`invalid_url`, `self_reference`, `not_short_url`, `not_found` など）を、利用者が次に何をすべきか直感的に分かる日本語メッセージに変換します。
 
-コンテナを使わず直接動かすときは、`bun run dev` の前に `src/server` で `sbt run` (9000) を立ち上げておく。
+---
 
-Vite の proxy で `/api/*` と `/{英数 8 文字}` を Play に流し、ブラウザからは `localhost:5173` の 1 オリジンに見せている。
-サーバの `shortener.base-url` の既定値が `http://localhost:5173` なので、返ってくる短縮 URL をそのまま踏める。
-Play の向き先を変えるときは `API_ORIGIN=http://host:port bun run dev`。compose では `http://server:9000` を渡している。
+## 開発コマンド
 
-compose (`make up`) では root の `.env` の `SHORTENER_BASE_URL` (`https://example.com/`) が使われるので、返ってくる短縮 URL はローカルでは開けない。
-E2E では runn が `Host: front` で来るので、`vite.config.ts` の `allowedHosts` に `front` を入れている。
+本ディレクトリ (`src/front/`) 内で以下のコマンドを実行します。
 
-## 画面
+```sh
+# 依存ライブラリのインストール
+bun install
 
-- 上のフォーム: URL を短縮する (`POST /api/v1/links`)。
-- 下のフォーム (`ResolveForm.tsx`): 短縮 URL を丸ごと貼り付けると元の URL を表示する (`GET /api/v1/links/resolve?shortUrl=`)。自サービスの URL か、どこがコードかの判定はサーバが行う。
-- どちらも貼り付けた時点で送信する。送る前に `url.ts` で、明らかに通らない URL (空・スキーム違いなど) だけを弾く。
+# 開発サーバの起動 (http://localhost:5173)
+bun run dev
 
-本番では CloudFront が同じ振り分けをする (default → S3、`/api/*` と `/????????` → EC2)。
+# TypeScript の型チェックのみ実行
+bun run typecheck
+
+# 型チェックとプロダクションビルド (成果物は dist/ へ出力)
+bun run build
+
+# 単体テストの実行 (url.test.ts)
+bun run test
+
+# Prettier によるコード整形
+bun run format
+
+# Prettier のフォーマットチェック
+bun run format:check
+```
+
+---
+
+## 開発用プロキシとサーバ接続
+
+### Vite によるリバースプロキシ (`vite.config.ts`)
+
+ローカル開発環境では、ブラウザから `http://localhost:5173` の単一オリジンとして動作するように Vite のリバースプロキシを設定しています。
+
+- **`/api/*`**: バックエンドの JSON API (`API_ORIGIN`、既定は `http://localhost:9000`) に転送。
+- **`^/[A-Za-z0-9]{8}(\\?.*)?$`**: 短縮 URL へのアクセスをバックエンドの 302 リダイレクト処理に転送。
+- **同一オリジン**: プロキシによりブラウザ側で CORS 制約を意識することなく API 通信を行えます。
+- **`allowedHosts: ["front"]`**: E2E テスト環境で runn コンテナから `Host: front:5173` でアクセスされるため、Vite 側で許可ホストとして追加しています。
+
+### 実行環境別の接続
+
+1. **Docker Compose (`make up`)**:
+   - `compose.yaml` によりフロントエンドとバックエンドがまとめて起動します。
+   - `API_ORIGIN=http://server:9000` がコンテナに渡されます。
+   - ホスト側のソースコード変更が HMR により即座にブラウザに反映されます。
+2. **ホストマシン上で直接動かす場合**:
+   - コンテナを使わずに `bun run dev` を実行する場合は、**あらかじめ `src/server` ディレクトリで `sbt run` (ポート 9000) を立ち上げておいてください**。
+   - 向き先を変更したい場合は環境変数 `API_ORIGIN=http://host:port bun run dev` で指定します。
+
+---
+
+## 仕様・実装方針
+
+### 1. 画面の挙動と UX
+
+- **ペースト即時送信**: 短縮フォーム・復元フォームともに、URL をペーストした瞬間に自動でリクエストを送信します (`onPaste` イベント)。Enter キー押下やボタンクリックでも送信可能です。
+- **ワンクリックコピー**: 発行された短縮 URL の横にコピーボタンを配置し、クリップボード API (`navigator.clipboard.writeText`) で手軽に共有できるようにしています。
+- **フォーム間の誘導**: すでに発行済みの短縮 URL を上の短縮フォームに入力した場合、サーバから `self_reference` エラーが返却され、「すでに短縮された URL です。元に戻すなら下の欄に貼り付けてください。」と適切なフォームへ利用者を誘導します。
+
+### 2. 送信前バリデーション (`src/url.ts`)
+
+無駄なリクエストを抑え、素早くフィードバックするために送信前チェックを行います。
+
+- **判定内容**:
+  - 空文字 (`empty`)
+  - 2,048 文字超過 (`too_long`)
+  - スキーム欠落 / `http`, `https` 以外 (`unsupported_scheme` / `malformed`)
+  - URL パース不能 (`malformed`)
+  - ユーザー名・パスワードを含む URL (`credentials`)
+- **「サーバより厳しくはしない」ポリシー**:
+  クライアント側で厳しすぎるチェックを行うと、サーバ側で許容される正規の URL を誤って弾いてしまうリスクがあります。そのため、フロントエンドでは「明らかに不正な形式」のみを弾き、Punycode 変換やドメインの妥当性などの最終判定はバックエンドに委ねています。
+
+### 3. エラーハンドリングと文言設計 (`src/api.ts`)
+
+- バックエンド API はセキュリティ上の理由から、例外の詳細や入力値をレスポンスに含めず、機械可読なエラーコードのみを返します。
+- `api.ts` が責務を持ち、利用者が次に何をすべきか直感的に理解できる日本語メッセージに変換して画面に伝えます。
+  - `invalid_url` (`reason` 付き): URL の形式不備に応じた案内
+  - `self_reference`: 復元フォームへの案内
+  - `not_short_url`: 自サービス発行の短縮 URL でない旨の案内
+  - `not_found`: 該当する短縮 URL が見つからない旨の案内
+  - `code_generation_failed`: 時間をおいて再試行を促す案内
+
+---
+
+## プロダクションビルド
+
+```sh
+bun run build
+```
+
+実行すると、TypeScript の型チェック (`tsc --noEmit`) が行われた後、Vite により最適化された静的ファイル群が `dist/` ディレクトリに出力されます。
+本番環境では、この `dist/` の成果物を Amazon S3 等の静的ホスティングに配置し、CloudFront を通じて配信します。
