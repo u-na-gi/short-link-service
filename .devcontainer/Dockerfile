@@ -6,6 +6,8 @@ ARG USER_UID=1000
 ARG USER_GID=1000
 # sbt ランチャーの版。実際に走る sbt の版は project/build.properties が決める
 ARG SBT_VERSION=1.13.0
+# runn (tests/ の E2E シナリオランナー) の版
+ARG RUNN_VERSION=1.11.0
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=en_US.UTF-8 \
@@ -43,6 +45,13 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get update \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
+
+# --- runn ---------------------------------------------------------------------
+# tests/ の E2E シナリオを流す。Go 製の単一バイナリなので展開して置くだけでよい
+RUN arch="$(dpkg --print-architecture)" \
+    && curl -fsSL "https://github.com/k1LoW/runn/releases/download/v${RUNN_VERSION}/runn_v${RUNN_VERSION}_linux_${arch}.tar.gz" \
+        | tar xzf - -C /usr/local/bin runn \
+    && chmod 0755 /usr/local/bin/runn
 
 # --- Node.js (LTS) ------------------------------------------------------------
 # setup_lts.x は NodeSource 側でその時点の Active LTS 系に解決される

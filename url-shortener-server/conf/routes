@@ -7,4 +7,6 @@
 GET     /                           controllers.HomeController.index()
 
 
-GET     /hello      controllers.HelloController.index()
+GET     /api/v1/hello      controllers.HelloController.index()
+
+POST    /api/v1/links       controllers.LinkController.create()

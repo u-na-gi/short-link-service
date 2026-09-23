@@ -1,0 +1,23 @@
+desc: URL を短縮できる
+labels:
+  - links
+runners:
+  req: ${E2E_BASE_URL:-http://localhost:9000}
+vars:
+  originalUrl: https://www.example.org/
+steps:
+  create:
+    desc: POST /api/v1/links が 201 と短縮リンクを返す
+    req:
+      /api/v1/links:
+        post:
+          body:
+            application/json:
+              url: "{{ vars.originalUrl }}"
+    test: |
+      current.res.status == 201
+      && current.res.headers['Content-Type'][0] startsWith 'application/json'
+      && current.res.body.originalUrl == vars.originalUrl
+      && len(current.res.body.code) == 8
+      && current.res.body.code matches '^[A-Za-z0-9]{8}$'
+      && current.res.body.shortUrl endsWith ('/' + current.res.body.code)

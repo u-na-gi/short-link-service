@@ -1,14 +1,12 @@
 {
   "name": "tests",
-  "module": "index.ts",
   "type": "module",
   "private": true,
   "scripts": {
+    "e2e": "bun run e2e.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint": "oxlint",
-    "lint:fix": "oxlint --fix",
-    "test": "bun test"
+    "lint": "oxlint"
   },
   "devDependencies": {
     "@types/bun": "latest",

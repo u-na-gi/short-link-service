@@ -1,0 +1,16 @@
+desc: サーバが起動していて JSON を返す
+labels:
+  - smoke
+runners:
+  req: ${E2E_BASE_URL:-http://localhost:9000}
+steps:
+  health:
+    desc: GET / が ok を返す
+    req:
+      /:
+        get:
+          headers:
+            Accept: application/json
+    test: |
+      current.res.status == 200
+      && current.res.body.status == 'ok'

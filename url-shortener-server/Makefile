@@ -6,4 +6,5 @@ help:
 dev:
 	sbt run
 
-
+fmt:
+	sbt scalafmtAll

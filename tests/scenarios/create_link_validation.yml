@@ -1,0 +1,76 @@
+desc: 短縮できない URL を 400 で弾く
+labels:
+  - links
+  - validation
+runners:
+  req: ${E2E_BASE_URL:-http://localhost:9000}
+vars:
+  # 自サービス宛の判定はサーバ側の shortener.host と突き合わせる。
+  # 向き先を変えるときは E2E_BASE_URL と一緒にこちらも揃える
+  selfUrl: ${E2E_SELF_URL:-http://localhost:9000/abcd1234}
+steps:
+  missingField:
+    desc: url フィールドが無ければ invalid_request
+    req:
+      /api/v1/links:
+        post:
+          body:
+            application/json: {}
+    test: |
+      current.res.status == 400
+      && current.res.body.error == 'invalid_request'
+  notAString:
+    desc: url が文字列でなければ invalid_request
+    req:
+      /api/v1/links:
+        post:
+          body:
+            application/json:
+              url: 123
+    test: |
+      current.res.status == 400
+      && current.res.body.error == 'invalid_request'
+  emptyString:
+    desc: 空文字は invalid_url
+    req:
+      /api/v1/links:
+        post:
+          body:
+            application/json:
+              url: ""
+    test: |
+      current.res.status == 400
+      && current.res.body.error == 'invalid_url'
+  selfReference:
+    desc: 自サービス宛は self_reference
+    req:
+      /api/v1/links:
+        post:
+          body:
+            application/json:
+              url: "{{ vars.selfUrl }}"
+    test: |
+      current.res.status == 400
+      && current.res.body.error == 'self_reference'
+  withCredentials:
+    desc: 認証情報つきは invalid_url
+    req:
+      /api/v1/links:
+        post:
+          body:
+            application/json:
+              url: "https://user:pass@evil.example.com/"
+    test: |
+      current.res.status == 400
+      && current.res.body.error == 'invalid_url'
+  unsupportedScheme:
+    desc: http/https 以外は invalid_url
+    req:
+      /api/v1/links:
+        post:
+          body:
+            application/json:
+              url: "ftp://example.com"
+    test: |
+      current.res.status == 400
+      && current.res.body.error == 'invalid_url'
