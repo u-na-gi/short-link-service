@@ -26,7 +26,7 @@ e2e:
 	$(E2E_COMPOSE) build
 	$(E2E_COMPOSE) run --rm runn $(E2E_ARGS); \
 	code=$$?; \
-	if [ $$code -ne 0 ]; then $(E2E_COMPOSE) logs --no-color --tail 100 server front; fi; \
+	if [ $$code -ne 0 ]; then $(E2E_COMPOSE) logs --no-color server front; fi; \
 	$(E2E_COMPOSE) rm -fsv; \
 	$(E2E_COMPOSE) down; \
 	exit $$code
