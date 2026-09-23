@@ -1,3 +1,4 @@
 *.png
 memo.txt
 .metals
+.scala-build

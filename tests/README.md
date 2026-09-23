@@ -15,11 +15,11 @@
 ## 実行
 
 ```sh
-make e2e             # サーバの起動 → シナリオ実行 → サーバ停止 までまとめて
-make e2e-scenarios   # 別ターミナルで sbt run 済みのサーバに流すだけ
+bun run e2e                                                  # tests/ で。サーバの起動 → シナリオ実行 → サーバ停止 までまとめて
+runn run "tests/scenarios/*.yml" --verbose --debug-on-failure  # リポジトリルートで。別ターミナルで sbt run 済みのサーバに流すだけ
 ```
 
-`make e2e` の実体は bun で走らせる `e2e.ts`。既にサーバが上がっていればそれを使う (開発中の `sbt run` は落とさない)。
+`bun run e2e` の実体は bun で走らせる `e2e.ts`。既にサーバが上がっていればそれを使う (開発中の `sbt run` は落とさない)。
 起動から始める場合、dev モードは最初のリクエストでコンパイルが走るので初回は数分かかる。
 サーバのログは `src/server/logs/e2e-server.log`。
 
@@ -37,8 +37,7 @@ runn list -l "tests/scenarios/*.yml"             # 一覧と構文チェック
 落ちたステップだけリクエストとレスポンスが丸ごと出る。
 
 ```sh
-make e2e E2E_ARGS=--debug   # 成功したステップも HTTP のやり取りを全部出す
-bun run e2e --debug         # tests/ から。runn へのオプションはそのまま渡る
+bun run e2e --debug         # 成功したステップも HTTP のやり取りを全部出す。runn へのオプションはそのまま渡る
 bun run e2e --fail-fast --profile
 ```
 
@@ -71,7 +70,7 @@ tests/
 bun で直接実行するので、ビルドは要らない。
 
 ```sh
-bun run e2e          # tests/ で。make e2e と同じ
+bun run e2e          # tests/ で
 bun install          # 型 (@types/bun) と prettier / oxlint を入れる
 bunx tsc --noEmit    # 型チェック
 bun run format       # prettier
