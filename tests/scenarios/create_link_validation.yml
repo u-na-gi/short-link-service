@@ -5,7 +5,7 @@ labels:
 runners:
   req: ${E2E_BASE_URL:-http://localhost:9000}
 vars:
-  # 自サービス宛の判定はサーバ側の shortener.host と突き合わせる。
+  # 自サービス宛の判定はサーバ側の shortener.base-url のホストと突き合わせる。
   # 向き先を変えるときは E2E_BASE_URL と一緒にこちらも揃える
   selfUrl: ${E2E_SELF_URL:-http://localhost:9000/abcd1234}
 steps:

@@ -21,3 +21,14 @@ steps:
       && len(current.res.body.code) == 8
       && current.res.body.code matches '^[A-Za-z0-9]{8}$'
       && current.res.body.shortUrl endsWith ('/' + current.res.body.code)
+  createAgain:
+    desc: 同じ URL をもう一度 POST すると同じ code が返る
+    req:
+      /api/v1/links:
+        post:
+          body:
+            application/json:
+              url: "{{ vars.originalUrl }}"
+    test: |
+      current.res.status == 201
+      && current.res.body.code == steps.create.res.body.code

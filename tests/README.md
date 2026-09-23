@@ -6,7 +6,7 @@
 
 |                        | 置き場所                     | 何を見るか                                                              |
 | ---------------------- | ---------------------------- | ----------------------------------------------------------------------- |
-| unit / controller spec | `url-shortener-server/test/` | アプリをインプロセスで起動し、ドメインのルールとルーティング・JSON の形 |
+| unit / controller spec | `src/server/test/` | アプリをインプロセスで起動し、ドメインのルールとルーティング・JSON の形 |
 | E2E                    | ここ (`tests/`)              | 実際に listen しているサーバに対する、外から見た振る舞い                |
 
 同じ検証を二重に持つためではなく、「本当にサーバとして起動して応答するか」を見るのがここの役目。
@@ -21,7 +21,7 @@ make e2e-scenarios   # 別ターミナルで sbt run 済みのサーバに流す
 
 `make e2e` の実体は bun で走らせる `e2e.ts`。既にサーバが上がっていればそれを使う (開発中の `sbt run` は落とさない)。
 起動から始める場合、dev モードは最初のリクエストでコンパイルが走るので初回は数分かかる。
-サーバのログは `url-shortener-server/logs/e2e-server.log`。
+サーバのログは `src/server/logs/e2e-server.log`。
 
 runn を直接叩くこともできる。
 
@@ -49,7 +49,7 @@ bun run e2e --fail-fast --profile
 | 変数               | 既定値                           | 用途                                                         |
 | ------------------ | -------------------------------- | ------------------------------------------------------------ |
 | `E2E_BASE_URL`     | `http://localhost:9000`          | 向き先                                                       |
-| `E2E_SELF_URL`     | `http://localhost:9000/abcd1234` | 自己参照の検証に使う URL。サーバの `shortener.host` と揃える |
+| `E2E_SELF_URL`     | `http://localhost:9000/abcd1234` | 自己参照の検証に使う URL。ホストをサーバの `shortener.base-url` と揃える |
 | `E2E_BOOT_TIMEOUT` | `300`                            | サーバの起動を待つ秒数                                       |
 | `E2E_SCENARIOS`    | `tests/scenarios/*.yml`          | 流す runbook                                                 |
 
@@ -60,33 +60,10 @@ tests/
   e2e.ts                             サーバの起動〜停止込みで runn を回す (bun で実行)
   scenarios/
     health.yml                       GET / が ok を返す (smoke)
-    create_link.yml                  POST /api/v1/links の正常系
+    create_link.yml                  POST /api/v1/links の正常系 (同じ URL なら同じ code)
+    resolve_link.yml                 GET /{code} が 302 で元URLへ飛ばす / 未知のコードは 404
     create_link_validation.yml       400 系 (invalid_request / invalid_url / self_reference)
 ```
-
-## まだ書いていないシナリオ
-
-サーバ側が未実装のため、以下は入れていない。実装したら足す。
-
-- **短縮URLから元URLへの復元** — `GET /{code}` のルートがまだ無い。できたら runn の本領で、
-  作成レスポンスの `code` を `bind` して次のステップで叩く形になる。
-
-  ```yaml
-  createThenResolve:
-    bind:
-      code: steps.create.res.body.code
-  resolve:
-    req:
-      "/{{ code }}":
-        get:
-          headers:
-            Accept: application/json
-    test: current.res.status == 302
-  ```
-
-- **同じ URL には同じ短縮 URL** — 現状 `DefaultShortLinkService.generate` は毎回ランダムな
-  コードを振るので、二回 POST するとコードが変わる。要件としては同一になるべきなので、
-  実装後に「二回投げて `steps.first.res.body.code == steps.second.res.body.code`」を追加する。
 
 ## e2e.ts をいじるとき
 

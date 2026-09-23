@@ -1,12 +1,12 @@
 {
-  "name": "url-shorter-sevice",
+  "name": "short-link-service",
   "dockerComposeFile": "compose.yaml",
   "service": "dev",
   "workspaceFolder": "/app",
   "remoteUser": "dev",
 
-  // Play の dev サーバは 9000 番
-  "forwardPorts": [9000],
+  // Play の dev サーバは 9000 番、フロントの Vite は 5173 番
+  "forwardPorts": [9000, 5173],
 
   // コンテナ作成前にホスト側で実行される。bind mount 元がホストに無いと Docker が
   // root 所有で自動作成し、コンテナ内から書けなくなる (gh auth の hosts.yml 等)。

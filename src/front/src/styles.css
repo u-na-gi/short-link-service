@@ -1,0 +1,209 @@
+:root {
+  --paper: #ffffff;
+  --ink: #1c1d1f;
+  --muted: #5f6368;
+  --line: #dadce0;
+  --link: #1558d6;
+  --error: #c5221f;
+  --lift: 0 1px 6px rgb(32 33 36 / 0.28);
+  --focus: #1558d6;
+
+  --font: "IBM Plex Sans JP", system-ui, sans-serif;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1b1c1e;
+    --ink: #e8eaed;
+    --muted: #9aa0a6;
+    --line: #3c4043;
+    --link: #8ab4f8;
+    --error: #f28b82;
+    --lift: 0 1px 6px rgb(0 0 0 / 0.6);
+    --focus: #8ab4f8;
+
+    color-scheme: dark;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 入力欄を画面上部 3 分の 1 あたりに置き、結果が下に伸びても入力欄の位置は動かさない。 */
+.page {
+  width: min(100% - 32px, 584px);
+  margin-inline: auto;
+  padding-block: clamp(96px, 34vh, 320px) 64px;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  padding-inline: 20px 6px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--paper);
+  transition: box-shadow 120ms ease;
+}
+
+.search:hover,
+.search:focus-within {
+  border-color: transparent;
+  box-shadow: var(--lift);
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.search-input::placeholder {
+  color: var(--muted);
+}
+
+.search-submit {
+  flex: none;
+  height: 36px;
+  padding-inline: 14px;
+  border: 0;
+  border-radius: 18px;
+  background: transparent;
+  color: var(--link);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.search-submit:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--link) 10%, transparent);
+}
+
+.search-submit:disabled {
+  color: var(--muted);
+  cursor: progress;
+}
+
+:is(.search-submit, .copy, .result-url):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* 入力欄と文字の頭をそろえる。 */
+.outcome {
+  padding-inline: 20px;
+  margin-top: 28px;
+}
+
+.error {
+  margin: 0;
+  color: var(--error);
+  font-size: 14px;
+}
+
+/* ページで唯一目立たせるもの。枠で囲まず、文字の大きさだけで階層を付ける。 */
+.result {
+  animation: reveal 180ms ease-out;
+}
+
+.result-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.result-url {
+  color: var(--link);
+  font-size: clamp(22px, 5.5vw, 30px);
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.result-url:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  text-decoration-thickness: 1px;
+}
+
+.copy {
+  flex: none;
+  height: 32px;
+  padding-inline: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: transparent;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.copy:hover {
+  border-color: var(--muted);
+}
+
+.result-original {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.result .error {
+  margin-top: 8px;
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result {
+    animation: none;
+  }
+
+  .search {
+    transition: none;
+  }
+}

@@ -1,4 +1,4 @@
-# url-shorter-sevice devcontainer
+# short-link-service devcontainer
 #
 # dev サービス 1 つ。コンテナの中に入って sbt で開発する。
 # Docker はイメージに入れず、devcontainer.json の docker-outside-of-docker feature が
@@ -20,7 +20,7 @@ services:
       - coursier-cache:/home/dev/.cache/coursier
 
       # ---- git / SSH ----
-      - ${HOME}/.ssh:/home/dev/.ssh
+      - ${HOME}/.ssh:/home/dev/.ssh:ro
       - ${HOME}/.gitconfig:/home/dev/.gitconfig:ro
 
       # ---- gh の認証情報 (ホストと共有、コンテナ再作成後も再ログイン不要) ----

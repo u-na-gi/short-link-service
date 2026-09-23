@@ -9,7 +9,7 @@ import { openSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const repoRoot = join(import.meta.dir, "..");
-const serverDir = join(repoRoot, "url-shortener-server");
+const serverDir = join(repoRoot, "src/server");
 const logPath = join(serverDir, "logs/e2e-server.log");
 
 const baseUrl = Bun.env.E2E_BASE_URL ?? "http://localhost:9000";

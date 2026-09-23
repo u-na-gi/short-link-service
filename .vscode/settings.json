@@ -8,5 +8,8 @@
   "[scala]": {
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "scalameta.metals"
-  }
+  },
+
+  // テストの run | debug をエディタ上に出す (既定の Test Explorer だとサイドバーにしか出ない)
+  "metals.testUserInterface": "Code Lenses"
 }

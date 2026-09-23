@@ -1,0 +1,42 @@
+desc: 短縮URLから元URLへ 302 で飛ばす
+labels:
+  - links
+runners:
+  req:
+    endpoint: ${E2E_BASE_URL:-http://localhost:9000}
+    # 302 そのものとその Location を検証したいので、リダイレクトは追わない
+    notFollowRedirect: true
+vars:
+  originalUrl: https://www.example.org/
+steps:
+  create:
+    desc: 短縮リンクを作る
+    req:
+      /api/v1/links:
+        post:
+          body:
+            application/json:
+              url: "{{ vars.originalUrl }}"
+    test: current.res.status == 201
+    bind:
+      code: current.res.body.code
+  resolve:
+    desc: GET /{code} が 302 で元URLを Location に返す
+    req:
+      /{{ code }}:
+        get:
+          headers:
+            Accept: application/json
+    test: |
+      current.res.status == 302
+      && current.res.headers['Location'][0] == vars.originalUrl
+  unknown:
+    desc: 未知のコードは 404 not_found
+    req:
+      /zzzzzzzz:
+        get:
+          headers:
+            Accept: application/json
+    test: |
+      current.res.status == 404
+      && current.res.body.error == 'not_found'
