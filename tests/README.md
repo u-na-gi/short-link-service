@@ -14,70 +14,50 @@
 
 ## 実行
 
-```sh
-bun run e2e                                                  # tests/ で。サーバの起動 → シナリオ実行 → サーバ停止 までまとめて
-runn run "tests/scenarios/*.yml" --verbose --debug-on-failure  # リポジトリルートで。別ターミナルで sbt run 済みのサーバに流すだけ
-```
-
-`bun run e2e` の実体は bun で走らせる `e2e.ts`。既にサーバが上がっていればそれを使う (開発中の `sbt run` は落とさない)。
-起動から始める場合、dev モードは最初のリクエストでコンパイルが走るので初回は数分かかる。
-サーバのログは `src/server/logs/e2e-server.log`。
-
-runn を直接叩くこともできる。
+リポジトリルートで。
 
 ```sh
-runn run "tests/scenarios/*.yml"
-runn run "tests/scenarios/*.yml" --label smoke   # ラベルで絞る
-runn list -l "tests/scenarios/*.yml"             # 一覧と構文チェック
+make e2e                              # E2E 専用の compose で server / front を立ち上げ、シナリオを流して片付ける
+make e2e E2E_ARGS=--debug             # runn への引数を足す (成功したステップも HTTP のやり取りを全部出す)
+make e2e E2E_ARGS="--label smoke"     # ラベルで絞る
+runn list -l "tests/scenarios/*.yml" </dev/null   # 一覧と構文チェック (stdin を閉じないと待ち続ける)
 ```
 
-### 出力を増やす
+`make e2e` は `compose.e2e.yaml` を `compose.yaml` に重ね、別プロジェクト (`short-link-e2e`) として起動する。
+
+- 経路は runn → front (Vite, `http://front:5173`) → server (Play)。ブラウザと同じくプロキシ越しに検証する。
+- front の healthcheck が Vite 経由で `/api/v1/health` に届いたら、シナリオを流し始める。
+  - Play の dev モードは最初のリクエストでコンパイルするので、初回は数分かかる。
+- server には `.env` ではなく固定値 (`SHORTENER_BASE_URL=https://example.com`) を渡す。
+- 開発用の `make up` と同時に動かしても、ポート・インメモリの状態・ビルド成果物は混ざらない。sbt / coursier のキャッシュだけ共有する。
+- 失敗したときは、片付ける前に server / front のログの末尾 100 行を出す。
 
 既定で `--verbose --debug-on-failure` を付けている。step ごとに desc と ok/fail が出て、
 落ちたステップだけリクエストとレスポンスが丸ごと出る。
 
-```sh
-bun run e2e --debug         # 成功したステップも HTTP のやり取りを全部出す。runn へのオプションはそのまま渡る
-bun run e2e --fail-fast --profile
-```
-
-`--capture <dir>` を渡すと、やり取りをファイルに吐き出せる。
-
 ### 環境変数
 
-| 変数               | 既定値                           | 用途                                                         |
-| ------------------ | -------------------------------- | ------------------------------------------------------------ |
-| `E2E_BASE_URL`     | `http://localhost:9000`          | 向き先                                                       |
-| `E2E_SELF_URL`     | `http://localhost:9000/abcd1234` | 自己参照の検証に使う URL。ホストをサーバの `shortener.base-url` と揃える |
-| `E2E_BOOT_TIMEOUT` | `300`                            | サーバの起動を待つ秒数                                       |
-| `E2E_SCENARIOS`    | `tests/scenarios/*.yml`          | 流す runbook                                                 |
+シナリオ側の変数。`compose.e2e.yaml` の runn サービスで渡している。
+
+| 変数                     | 既定値                           | 用途                                                                   |
+| ------------------------ | -------------------------------- | ---------------------------------------------------------------------- |
+| `E2E_BASE_URL`           | `http://localhost:9000`          | 向き先。compose では `http://front:5173`                               |
+| `E2E_SELF_URL`           | `http://localhost:9000/abcd1234` | 自己参照の検証に使う URL。ホストをサーバの `shortener.base-url` と揃える |
+| `E2E_UNKNOWN_SHORT_URL`  | `https://example.com/zzzzzzzz`   | 未発行の短縮 URL。ホストをサーバの `shortener.base-url` と揃える       |
 
 ## 構成
 
 ```
 tests/
-  e2e.ts                             サーバの起動〜停止込みで runn を回す (bun で実行)
   scenarios/
-    health.yml                       GET / が ok を返す (smoke)
+    health.yml                       GET /api/v1/health が ok を返す (smoke)
     create_link.yml                  POST /api/v1/links の正常系 (同じ URL なら同じ code)
-    resolve_link.yml                 GET /{code} が 302 で元URLへ飛ばす / 未知のコードは 404
+    resolve_link.yml                 GET /{code} の 302 と、GET /api/v1/links/resolve による復元
     create_link_validation.yml       400 系 (invalid_request / invalid_url / self_reference)
-```
-
-## e2e.ts をいじるとき
-
-シナリオは runn の YAML、その周りの段取り (サーバの起動・待機・停止) だけが TypeScript。
-bun で直接実行するので、ビルドは要らない。
-
-```sh
-bun run e2e          # tests/ で
-bun install          # 型 (@types/bun) と prettier / oxlint を入れる
-bunx tsc --noEmit    # 型チェック
-bun run format       # prettier
-bun run lint         # oxlint
 ```
 
 ## runn の導入
 
-devcontainer の Dockerfile で `/usr/local/bin/runn` に入れている。
-バージョンを上げるときは `.devcontainer/Dockerfile` の `RUNN_VERSION` を変えて Rebuild。
+`make e2e` は runn の公式イメージ (`ghcr.io/k1low/runn`) を使う。版は `compose.e2e.yaml` で固定している。
+devcontainer にも `/usr/local/bin/runn` として入れてあり、構文チェック (`runn list`) に使う。
+版を上げるときは両方 (`compose.e2e.yaml` と `.devcontainer/Dockerfile` の `RUNN_VERSION`) を揃える。

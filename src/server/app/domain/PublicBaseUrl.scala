@@ -16,28 +16,60 @@ final case class PublicBaseUrl private (value: String) {
   def host: ServiceHost = ServiceHost(URI(value).getHost)
 
   def linkTo(code: String): String = s"$value/$code"
+
+  /** 自サービスの短縮 URL ならコードを取り出す。
+    *
+    * ホスト名だけで判定し、スキームとポートは問わない。自己参照の判定 ([[ServiceHost]]) と基準を揃えるため。
+    *
+    * ずれると「短縮はできないのに、戻すこともできない」URL ができる。
+    *
+    * クエリとフラグメントは、リダイレクト (`GET /:code`) でも無視されるので同じく無視する。
+    */
+  def codeOf(raw: String): Option[String] =
+    Url
+      .from(raw)
+      .toOption
+      .filter(url => host.matches(url.host))
+      .collect { case url if PublicBaseUrl.CodePath.matches(url.path) => url.path.drop(1) }
 }
 
 object PublicBaseUrl {
 
-  def from(raw: String): Either[String, PublicBaseUrl] =
+  /** 採番するコード (英数 8 文字) だけを 1 階層のパスとして受け付ける。 */
+  private val CodePath = "/[A-Za-z0-9]{8}".r
+
+  /** 設定ミスは起動時に止めるだけで利用者には見せないので、文言は持たせず呼び出し側 (Module) で組み立てる。 */
+  enum Error {
+
+    /** stack trace を残せるよう、パースの例外をそのまま持つ。 */
+    case Malformed(cause: URISyntaxException)
+    case UnsupportedScheme(scheme: Option[String])
+    case MissingHost
+    case HasUserInfo
+    case HasQuery
+    case HasFragment
+
+    /** 短縮 URL は /{code} で Play のルートに当たる前提なので、パス付きの公開 URL は扱えない。 */
+    case HasPath(path: String)
+  }
+
+  def from(raw: String): Either[Error, PublicBaseUrl] =
     try {
       val uri = URI(raw.trim)
       val scheme = Option(uri.getScheme).map(_.toLowerCase)
       if (!scheme.contains("http") && !scheme.contains("https"))
-        Left(s"http か https の URL を指定してください: $raw")
-      else if (uri.getHost == null)
-        Left(s"ホスト名がありません: $raw")
-      else if (uri.getRawUserInfo != null || uri.getRawQuery != null || uri.getRawFragment != null)
-        Left(s"認証情報・クエリ・フラグメントは付けられません: $raw")
+        Left(Error.UnsupportedScheme(scheme))
+      else if (uri.getHost == null) Left(Error.MissingHost)
+      else if (uri.getRawUserInfo != null) Left(Error.HasUserInfo)
+      else if (uri.getRawQuery != null) Left(Error.HasQuery)
+      else if (uri.getRawFragment != null) Left(Error.HasFragment)
       else if (Option(uri.getRawPath).exists(p => p.nonEmpty && p != "/"))
-        // 短縮 URL は /{code} で Play のルートに当たる前提なので、パス付きの公開 URL は扱えない。
-        Left(s"パスは付けられません: $raw")
+        Left(Error.HasPath(uri.getRawPath))
       else {
         val port = if (uri.getPort == -1) "" else s":${uri.getPort}"
         Right(PublicBaseUrl(s"${scheme.get}://${uri.getHost.toLowerCase}$port"))
       }
     } catch {
-      case e: URISyntaxException => Left(s"URL として解釈できません: $raw (${e.getMessage})")
+      case e: URISyntaxException => Left(Error.Malformed(e))
     }
 }

@@ -1,6 +1,21 @@
 package domain
 
-/** 検証済みの Url から短縮リンクを発行する。入力が VO で保証済みなので失敗しない。 */
+import scala.concurrent.Future
+
+/** 検証済みの Url に一意なコードを振り、保存まで行う。
+  *
+  * 重複の避け方 (乱数なら採番し直し、連番なら不要) は採番方式次第なので、ユースケースでなく実装側に置く。
+  */
 trait ShortLinkService {
-  def generate(url: Url): ShortLink
+
+  /** 同じ URL が並行リクエストで先に登録されていたら、新しく振らずにそのリンクを返す。 */
+  def issue(url: Url): Future[Either[ShortLinkService.Error, ShortLink]]
+}
+
+object ShortLinkService {
+  enum Error {
+
+    /** 採番を上限回数やり直しても空きコードが取れなかった。 */
+    case CodeExhausted
+  }
 }

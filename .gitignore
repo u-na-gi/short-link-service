@@ -2,3 +2,4 @@
 memo.txt
 .metals
 .scala-build
+.env

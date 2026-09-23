@@ -1,0 +1,4 @@
+- [開発環境と復元機能の作業計画](dev-env-and-resolve-plan.md) — Rebuild をまたぐ合意済み計画は docs/plan-dev-env-and-resolve.md、進捗もそこ
+- [API型共有は見送り](api-type-sharing-decision.md) — OpenAPI反対、protobuf調査済みだが過剰として不採用
+- [Scala.js で検証共有は見送り](scalajs-validation-sharing-decision.md) — front の URL 検証は TS で自前実装、server と同じかより緩く
+- [ログは常に JSON・値は隠す](logging-json-decision.md) — user 強指定。dev 用テキスト形式は提案しない

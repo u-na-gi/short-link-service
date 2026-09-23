@@ -12,6 +12,8 @@ export default defineConfig({
     host: true,
     port: 5173,
     strictPort: true,
+    // E2E 用の compose では runn がサービス名 front で来る。Vite は既定で localhost 以外の Host を弾く
+    allowedHosts: ["front"],
     proxy: {
       "/api": api,
       // 短縮 URL (/{英数 8 文字}) は Play のリダイレクトへ。本番の CloudFront の /???????? と同じ振り分け。

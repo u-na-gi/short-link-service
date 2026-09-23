@@ -1,6 +1,6 @@
 package usecase
 
-import domain.{SaveResult, ServiceHost, ShortLink, ShortLinkRepository, ShortLinkService, Url}
+import domain.{ServiceHost, ShortLink, ShortLinkRepository, ShortLinkService, Url}
 import javax.inject._
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -22,7 +22,6 @@ class CreateShortLink @Inject() (
     shortLinkService: ShortLinkService,
     serviceHost: ServiceHost
 )(implicit ec: ExecutionContext) {
-  import CreateShortLink._
 
   def execute(rawUrl: String): Future[Either[CreateShortLinkError, ShortLink]] =
     Url.from(rawUrl) match {
@@ -35,27 +34,12 @@ class CreateShortLink @Inject() (
         // 登録済みなら乱数を引かずにそのまま返す。
         repository.findByUrl(url).flatMap {
           case Some(existing) => Future.successful(Right(existing))
-          case None           => issue(url, MaxAttempts)
+          case None           =>
+            shortLinkService
+              .issue(url)
+              .map(_.left.map { case ShortLinkService.Error.CodeExhausted =>
+                CreateShortLinkError.CodeExhausted
+              })
         }
     }
-
-  private def issue(
-      url: Url,
-      attemptsLeft: Int
-  ): Future[Either[CreateShortLinkError, ShortLink]] =
-    if (attemptsLeft <= 0) Future.successful(Left(CreateShortLinkError.CodeExhausted))
-    else {
-      val link = shortLinkService.generate(url)
-      repository.saveIfAbsent(link).flatMap {
-        case SaveResult.Saved               => Future.successful(Right(link))
-        case SaveResult.UrlExists(existing) => Future.successful(Right(existing))
-        case SaveResult.CodeTaken           => issue(url, attemptsLeft - 1)
-      }
-    }
-}
-
-object CreateShortLink {
-
-  /** 62^8 通りあるので実際に何度も被ることはない。採番の不具合で無限ループしないための上限。 */
-  private val MaxAttempts = 10
 }

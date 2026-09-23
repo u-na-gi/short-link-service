@@ -1,4 +1,4 @@
-desc: 短縮URLから元URLへ 302 で飛ばす
+desc: 短縮URLから元URLへ戻す (302 リダイレクトと復元 API)
 labels:
   - links
 runners:
@@ -8,6 +8,8 @@ runners:
     notFollowRedirect: true
 vars:
   originalUrl: https://www.example.org/
+  # 形は正しいが未発行の短縮URL。ホストは server の shortener.base-url と揃える (E2E_SELF_URL と同じ考え方)
+  unknownShortUrl: ${E2E_UNKNOWN_SHORT_URL:-https://example.com/zzzzzzzz}
 steps:
   create:
     desc: 短縮リンクを作る
@@ -40,3 +42,45 @@ steps:
     test: |
       current.res.status == 404
       && current.res.body.error == 'not_found'
+  resolveApi:
+    desc: GET /api/v1/links/resolve に作成時の shortUrl を渡すと 200 で元URLを返す
+    req:
+      /api/v1/links/resolve?shortUrl={{ urlencode(steps.create.res.body.shortUrl) }}:
+        get:
+          headers:
+            Accept: application/json
+    test: |
+      current.res.status == 200
+      && current.res.body.code == code
+      && current.res.body.shortUrl == steps.create.res.body.shortUrl
+      && current.res.body.originalUrl == vars.originalUrl
+  resolveApiUnknown:
+    desc: 形は正しいが未発行の短縮URLは 404 not_found
+    req:
+      /api/v1/links/resolve?shortUrl={{ urlencode(vars.unknownShortUrl) }}:
+        get:
+          headers:
+            Accept: application/json
+    test: |
+      current.res.status == 404
+      && current.res.body.error == 'not_found'
+  resolveApiNotShortUrl:
+    desc: 自サービスの短縮URLでなければ 400 not_short_url
+    req:
+      /api/v1/links/resolve?shortUrl={{ urlencode('https://other.example/abcd1234') }}:
+        get:
+          headers:
+            Accept: application/json
+    test: |
+      current.res.status == 400
+      && current.res.body.error == 'not_short_url'
+  resolveApiMissing:
+    desc: shortUrl が無ければ 400 invalid_request
+    req:
+      /api/v1/links/resolve:
+        get:
+          headers:
+            Accept: application/json
+    test: |
+      current.res.status == 400
+      && current.res.body.error == 'invalid_request'

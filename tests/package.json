@@ -3,7 +3,6 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "e2e": "bun run e2e.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint"

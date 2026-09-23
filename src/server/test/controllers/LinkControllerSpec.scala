@@ -1,5 +1,7 @@
 package controllers
 
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets.UTF_8
 import org.scalatestplus.play._
 import org.scalatestplus.play.guice._
 import play.api.libs.json.Json
@@ -35,20 +37,29 @@ class LinkControllerSpec extends PlaySpec with GuiceOneAppPerTest with Injecting
       (contentAsJson(result) \ "error").as[String] mustBe "invalid_request"
     }
 
-    "url が文字列でなければ 400 invalid_request" in {
+    "url が文字列でなければ 400 invalid_request で、検証の詳細は返さない" in {
       val request = FakeRequest(POST, "/api/v1/links").withJsonBody(Json.obj("url" -> 123))
       val result = route(app, request).get
 
       status(result) mustBe BAD_REQUEST
-      (contentAsJson(result) \ "error").as[String] mustBe "invalid_request"
+      contentAsJson(result) mustBe Json.obj("error" -> "invalid_request")
     }
 
-    "空文字なら 400 invalid_url" in {
+    "空文字なら 400 invalid_url (reason: empty)" in {
       val request = FakeRequest(POST, "/api/v1/links").withJsonBody(Json.obj("url" -> ""))
       val result = route(app, request).get
 
       status(result) mustBe BAD_REQUEST
-      (contentAsJson(result) \ "error").as[String] mustBe "invalid_url"
+      contentAsJson(result) mustBe Json.obj("error" -> "invalid_url", "reason" -> "empty")
+    }
+
+    "壊れた URL でも入力値は返さない" in {
+      val request = FakeRequest(POST, "/api/v1/links")
+        .withJsonBody(Json.obj("url" -> "https://exa mple.com/?token=secret"))
+      val result = route(app, request).get
+
+      status(result) mustBe BAD_REQUEST
+      contentAsJson(result) mustBe Json.obj("error" -> "invalid_url", "reason" -> "malformed")
     }
 
     "自サービス宛なら 400 self_reference" in {
@@ -67,7 +78,7 @@ class LinkControllerSpec extends PlaySpec with GuiceOneAppPerTest with Injecting
       val result = route(app, request).get
 
       status(result) mustBe BAD_REQUEST
-      (contentAsJson(result) \ "error").as[String] mustBe "invalid_url"
+      contentAsJson(result) mustBe Json.obj("error" -> "invalid_url", "reason" -> "credentials")
     }
 
     "ftp なら 400 invalid_url" in {
@@ -76,7 +87,10 @@ class LinkControllerSpec extends PlaySpec with GuiceOneAppPerTest with Injecting
       val result = route(app, request).get
 
       status(result) mustBe BAD_REQUEST
-      (contentAsJson(result) \ "error").as[String] mustBe "invalid_url"
+      contentAsJson(result) mustBe Json.obj(
+        "error" -> "invalid_url",
+        "reason" -> "unsupported_scheme"
+      )
     }
 
     "同じURLを 2 回投げると同じ code を返す" in {
@@ -105,6 +119,56 @@ class LinkControllerSpec extends PlaySpec with GuiceOneAppPerTest with Injecting
     }
   }
 
+  "GET /api/v1/links/resolve" should {
+
+    "作成時の shortUrl を渡すと 200 で同じ形のリンクを返す" in {
+      val created = contentAsJson(
+        route(
+          app,
+          FakeRequest(POST, "/api/v1/links")
+            .withJsonBody(Json.obj("url" -> "https://www.example.org/"))
+        ).get
+      )
+      val shortUrl = (created \ "shortUrl").as[String]
+
+      val result = route(
+        app,
+        FakeRequest(GET, s"/api/v1/links/resolve?shortUrl=${URLEncoder.encode(shortUrl, UTF_8)}")
+      ).get
+
+      status(result) mustBe OK
+      contentAsJson(result) mustBe created
+    }
+
+    "shortUrl が無ければ 400 invalid_request" in {
+      val result = route(app, FakeRequest(GET, "/api/v1/links/resolve")).get
+
+      status(result) mustBe BAD_REQUEST
+      (contentAsJson(result) \ "error").as[String] mustBe "invalid_request"
+    }
+
+    "他ホストの URL なら 400 not_short_url" in {
+      val result = route(
+        app,
+        FakeRequest(GET, "/api/v1/links/resolve?shortUrl=https%3A%2F%2Fother.example%2Fabcd1234")
+      ).get
+
+      status(result) mustBe BAD_REQUEST
+      (contentAsJson(result) \ "error").as[String] mustBe "not_short_url"
+    }
+
+    "未発行の短縮URLなら 404 not_found で、入力値は返さない" in {
+      // application.conf の shortener.base-url は http://localhost:5173
+      val result = route(
+        app,
+        FakeRequest(GET, "/api/v1/links/resolve?shortUrl=http%3A%2F%2Flocalhost%3A5173%2Fzzzzzzzz")
+      ).get
+
+      status(result) mustBe NOT_FOUND
+      contentAsJson(result) mustBe Json.obj("error" -> "not_found")
+    }
+  }
+
   "GET /:code" should {
 
     "発行済みのコードなら 302 で元URLへ飛ばす" in {
@@ -121,11 +185,11 @@ class LinkControllerSpec extends PlaySpec with GuiceOneAppPerTest with Injecting
       redirectLocation(result) mustBe Some("https://www.example.org/")
     }
 
-    "未知のコードなら 404 not_found" in {
+    "未知のコードなら 404 not_found で、コードは返さない" in {
       val result = route(app, FakeRequest(GET, "/zzzzzzzz")).get
 
       status(result) mustBe NOT_FOUND
-      (contentAsJson(result) \ "error").as[String] mustBe "not_found"
+      contentAsJson(result) mustBe Json.obj("error" -> "not_found")
     }
   }
 }

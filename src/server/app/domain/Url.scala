@@ -12,24 +12,20 @@ final case class Url private (value: String) {
 
   /** 検証済みなのでパースは必ず成功し、ホストも正規化済み。 */
   val host: String = HttpUrl.get(value).host
+
+  /** パーセントエンコードされたままのパス。クエリとフラグメントは含まない。 */
+  val path: String = HttpUrl.get(value).encodedPath
 }
 
 object Url {
 
+  /** 利用者向けの文言はフロントが持つので、ここでは種類だけを返す。 */
   enum Error {
     case Empty
     case Malformed(raw: String)
     case UnsupportedScheme(scheme: String)
     case ContainsCredentials
     case TooLong(length: Int)
-
-    def message: String = this match {
-      case Empty                => "url が空です"
-      case Malformed(raw)       => s"url として解釈できません: $raw"
-      case UnsupportedScheme(s) => s"サポートしていないスキームです: $s"
-      case ContainsCredentials  => "認証情報を含む url は登録できません"
-      case TooLong(length)      => s"url が長すぎます ($length 文字 / 上限 $MaxLength 文字)"
-    }
   }
 
   /** javascript: や data: を弾くため、許可するスキームはホワイトリストで持つ。 */

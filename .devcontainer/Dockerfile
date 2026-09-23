@@ -8,6 +8,9 @@ ARG USER_GID=1000
 ARG SBT_VERSION=1.13.0
 # runn (tests/ の E2E シナリオランナー) の版
 ARG RUNN_VERSION=1.11.0
+# metals-mcp (Metals の MCP サーバ) と、それを入れる coursier の版
+ARG METALS_VERSION=1.6.9
+ARG COURSIER_VERSION=2.1.25
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=en_US.UTF-8 \
@@ -34,6 +37,16 @@ RUN curl -fsSL "https://github.com/sbt/sbt/releases/download/v${SBT_VERSION}/sbt
     && chown -R root:root /usr/share/sbt \
     && chmod -R 755 /usr/share/sbt \
     && ln -s /usr/share/sbt/bin/sbt /usr/local/bin/sbt
+
+# --- metals-mcp ---------------------------------------------------------------
+# Claude Code が /app/.mcp.json から stdio で起動する Metals の MCP サーバ。
+# coursier は入れるためだけに使い、置いて行かない。cs install が書くのは起動スクリプトで、
+# 本体の jar は初回起動時に ~/.cache/coursier へ落ちる
+RUN curl -fsSL "https://github.com/coursier/coursier/releases/download/v${COURSIER_VERSION}/cs-x86_64-pc-linux.gz" \
+        | gzip -d > /tmp/cs \
+    && chmod +x /tmp/cs \
+    && /tmp/cs install --install-dir /usr/local/bin "metals-mcp:${METALS_VERSION}" \
+    && rm -rf /tmp/cs /root/.cache/coursier
 
 # --- GitHub CLI ---------------------------------------------------------------
 # 認証情報はホストの ~/.config/gh を compose.yaml で bind mount する

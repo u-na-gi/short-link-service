@@ -1,0 +1,51 @@
+# 開発用。make up で起動する。コンテナに入って作業する想定はなく、ホスト (または devcontainer) で
+# 編集したソースをマウントし、sbt run と Vite のホットリロードで反映させる。
+#
+# devcontainer はホストの Docker を使う (docker-outside-of-docker) ので、バインドマウント元は
+# ホスト側で解釈される。devcontainer.json の remoteEnv が LOCAL_WORKSPACE_FOLDER にホストの
+# パスを入れる。ホストから直接打つときは未設定なので、カレントディレクトリになる。
+name: short-link-service
+
+services:
+  server:
+    build: ./src/server
+    env_file: .env
+    environment:
+      # Vite のプロキシは Host をプロキシ先 (server:9000) に書き換えて流す。
+      # Play の既定の許可リスト (localhost など) には無いので足す
+      PLAY_EXTRA_ALLOWED_HOST: server
+      # sbt の進捗表示と色付けは制御文字としてログに混ざり、JSON のログが読めなくなるので止める
+      SBT_OPTS: -Dsbt.supershell=false -Dsbt.color=false
+    volumes:
+      - ${LOCAL_WORKSPACE_FOLDER:-.}/src/server:/app
+      # ビルド成果物は devcontainer の sbt / Metals と取り合わないよう、コンテナ専用にする
+      - server-target:/app/target
+      - server-project-target:/app/project/target
+      # 依存の取得を毎回やり直さないためのキャッシュ
+      - sbt-cache:/home/dev/.sbt
+      - coursier-cache:/home/dev/.cache/coursier
+    ports:
+      - "9000:9000"
+    # sbt run は標準入力が閉じると Enter を押したとみなして止まる
+    stdin_open: true
+    tty: true
+
+  front:
+    build: ./src/front
+    environment:
+      # Vite のプロキシが /api と /{code} を流す先
+      API_ORIGIN: http://server:9000
+    volumes:
+      - ${LOCAL_WORKSPACE_FOLDER:-.}/src/front:/app
+      # イメージで入れた node_modules を使う。make up の --renew-anon-volumes で毎回作り直す
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - server
+
+volumes:
+  server-target:
+  server-project-target:
+  sbt-cache:
+  coursier-cache:

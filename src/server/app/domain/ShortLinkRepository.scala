@@ -13,7 +13,7 @@ enum SaveResult {
   case UrlExists(existing: ShortLink)
 }
 
-/** 短縮リンクの永続化。実装が inmemory か DB かをユースケースに意識させないための抽象。 */
+/** 短縮リンクの永続化。 */
 trait ShortLinkRepository {
 
   /** コードも URL も未登録のときだけ保存する。判定と保存は不可分に行う。 */

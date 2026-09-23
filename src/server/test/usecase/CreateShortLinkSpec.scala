@@ -5,33 +5,23 @@ import infra.inmemory.InMemoryShortLinkRepository
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
+import service.DefaultShortLinkService
+import support.SequenceCodes
 
-/** DI コンテナを使わず new で組み立てられるので、アプリを起動せずに検証できる。 */
+/** DI コンテナを使わず new で組み立てられるので、アプリを起動せずに検証できる。
+  *
+  * 採番し直しの挙動は DefaultShortLinkServiceSpec で見る。ここではコードを固定して業務の流れだけを見る。
+  */
 class CreateShortLinkSpec extends AnyWordSpec with Matchers with ScalaFutures {
 
   private implicit val ec: ExecutionContext = ExecutionContext.global
 
-  /** コードの採番をテストから固定するためのスタブ。 */
-  private val fixedCodeService = new ShortLinkService {
-    override def generate(url: Url): ShortLink = ShortLink("fixed123", url)
-  }
-
-  /** 渡したコードを順に返し、呼ばれた回数を数えるスタブ。使い切ったら最後のコードを返し続ける。 */
-  private class SequenceCodeService(codes: String*) extends ShortLinkService {
-    var calls = 0
-    override def generate(url: Url): ShortLink = {
-      val code = codes(math.min(calls, codes.length - 1))
-      calls += 1
-      ShortLink(code, url)
-    }
-  }
-
   private def newUsecase(
       repository: ShortLinkRepository = new InMemoryShortLinkRepository(),
       serviceHost: ServiceHost = ServiceHost("short.example"),
-      shortLinkService: ShortLinkService = fixedCodeService
-  ) = new CreateShortLink(repository, shortLinkService, serviceHost)
+      codes: () => String = new SequenceCodes("fixed123")
+  ) = new CreateShortLink(repository, new DefaultShortLinkService(repository, codes), serviceHost)
 
   "CreateShortLink.execute" should {
 
@@ -95,8 +85,8 @@ class CreateShortLinkSpec extends AnyWordSpec with Matchers with ScalaFutures {
     }
 
     "同じURLには同じリンクを返し、2 回目は採番しない" in {
-      val service = new SequenceCodeService("first001", "second02")
-      val usecase = newUsecase(shortLinkService = service)
+      val codes = new SequenceCodes("first001", "second02")
+      val usecase = newUsecase(codes = codes)
 
       val first = usecase.execute("https://example.com").futureValue
       // 正規化後に同じ URL になるなら同じリンク。
@@ -104,42 +94,27 @@ class CreateShortLinkSpec extends AnyWordSpec with Matchers with ScalaFutures {
 
       first.map(_.code) shouldBe Right("first001")
       second.map(_.code) shouldBe Right("first001")
-      service.calls shouldBe 1
+      codes.calls shouldBe 1
     }
 
     "違うURLには別のコードを振る" in {
-      val usecase = newUsecase(shortLinkService = new SequenceCodeService("first001", "second02"))
+      val usecase = newUsecase(codes = new SequenceCodes("first001", "second02"))
       usecase.execute("https://a.example").futureValue.map(_.code) shouldBe Right("first001")
       usecase.execute("https://b.example").futureValue.map(_.code) shouldBe Right("second02")
     }
 
-    "コードが被ったら採番し直す" in {
-      val repository = new InMemoryShortLinkRepository()
-      newUsecase(repository).execute("https://taken.example").futureValue
-
-      val service = new SequenceCodeService("fixed123", "fixed123", "fresh001")
-      val result = newUsecase(repository, shortLinkService = service)
-        .execute("https://example.com")
-        .futureValue
-
-      result.map(_.code) shouldBe Right("fresh001")
-      service.calls shouldBe 3
-      repository.findByCode("fresh001").futureValue.map(_.url.value) shouldBe
-        Some("https://example.com/")
-      // 被った側のリンクは上書きされない。
-      repository.findByCode("fixed123").futureValue.map(_.url.value) shouldBe
-        Some("https://taken.example/")
-    }
-
-    "被り続けたら上限回数で CodeExhausted を返す" in {
-      val repository = new InMemoryShortLinkRepository()
-      newUsecase(repository).execute("https://taken.example").futureValue
-
-      val service = new SequenceCodeService("fixed123")
-      newUsecase(repository, shortLinkService = service)
+    "採番できなければ CodeExhausted を返す" in {
+      val exhausted = new ShortLinkService {
+        override def issue(url: Url): Future[Either[ShortLinkService.Error, ShortLink]] =
+          Future.successful(Left(ShortLinkService.Error.CodeExhausted))
+      }
+      new CreateShortLink(
+        new InMemoryShortLinkRepository(),
+        exhausted,
+        ServiceHost("short.example")
+      )
         .execute("https://example.com")
         .futureValue shouldBe Left(CreateShortLinkError.CodeExhausted)
-      service.calls shouldBe 10
     }
   }
 }

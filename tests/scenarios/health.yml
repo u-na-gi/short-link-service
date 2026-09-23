@@ -5,9 +5,10 @@ runners:
   req: ${E2E_BASE_URL:-http://localhost:9000}
 steps:
   health:
-    desc: GET / が ok を返す
+    # フロント経由だと GET / は index.html になるので、/api 側のヘルスチェックを見る
+    desc: GET /api/v1/health が ok を返す
     req:
-      /:
+      /api/v1/health:
         get:
           headers:
             Accept: application/json

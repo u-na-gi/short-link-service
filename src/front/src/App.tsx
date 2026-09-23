@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
 import { shortenUrl, type ShortLink } from "./api.ts";
+import { ResolveForm } from "./ResolveForm.tsx";
+import { describeUrlProblem, findUrlProblem } from "./url.ts";
 
 type State =
   | { kind: "idle" }
@@ -21,8 +23,11 @@ export function App() {
 
   async function submit(raw: string) {
     const url = raw.trim();
-    if (url === "") {
-      setState({ kind: "error", message: "短くしたい URL を貼り付けてください。" });
+    const problem = findUrlProblem(url);
+    if (problem !== null) {
+      const message =
+        problem === "empty" ? "短くしたい URL を貼り付けてください。" : describeUrlProblem(problem);
+      setState({ kind: "error", message });
       return;
     }
     // 同じ URL を貼り直しただけなら、表示中の結果がそのまま答えなので送らない。
@@ -43,6 +48,19 @@ export function App() {
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     void submit(value);
+  }
+
+  function onChange(next: string) {
+    setValue(next);
+    // 送る前から問題が分かるよう、入力のたびに確かめる。空欄は打ち始める前と同じ扱いでエラーにしない。
+    const problem = findUrlProblem(next);
+    if (problem !== null && problem !== "empty") {
+      // 送信中なら、遅れて返る応答で今のエラーを上書きしないよう捨てる。
+      latest.current++;
+      setState({ kind: "error", message: describeUrlProblem(problem) });
+    } else if (state.kind === "error") {
+      setState({ kind: "idle" });
+    }
   }
 
   function onPaste(_: ClipboardEvent<HTMLInputElement>) {
@@ -89,7 +107,7 @@ export function App() {
           autoFocus
           placeholder="短くしたい URL を貼り付け"
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           onPaste={onPaste}
           aria-invalid={hasError}
           aria-describedby={hasError ? errorId : undefined}
@@ -128,6 +146,8 @@ export function App() {
           </section>
         )}
       </div>
+
+      <ResolveForm />
     </main>
   );
 }

@@ -28,6 +28,13 @@ class HomeControllerSpec extends PlaySpec with GuiceOneAppPerTest with Injecting
       (contentAsJson(home) \ "status").as[String] mustBe "ok"
     }
 
+    "フロント経由用の /api/v1/health でも ok を返す" in {
+      val health = route(app, FakeRequest(GET, "/api/v1/health")).get
+
+      status(health) mustBe OK
+      (contentAsJson(health) \ "status").as[String] mustBe "ok"
+    }
+
     "render the index page from the router" in {
       val request = FakeRequest(GET, "/")
       val home = route(app, request).get

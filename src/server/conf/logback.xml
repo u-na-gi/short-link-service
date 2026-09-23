@@ -1,49 +1,44 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 
 <!-- https://www.playframework.com/documentation/latest/SettingsLogger -->
+<!-- 開発でも本番でも JSON で 1 行ずつ標準出力に出す。本番は CloudWatch Logs でそのまま項目検索できる。
+     手元で読むときは jq を通す (make logs-server)。 -->
 
 <!DOCTYPE configuration>
 
 <configuration>
-  <import class="ch.qos.logback.classic.encoder.PatternLayoutEncoder"/>
   <import class="ch.qos.logback.classic.AsyncAppender"/>
-  <import class="ch.qos.logback.core.FileAppender"/>
   <import class="ch.qos.logback.core.ConsoleAppender"/>
-
-  <appender name="FILE" class="FileAppender">
-    <file>${application.home:-.}/logs/application.log</file>
-    <encoder class="PatternLayoutEncoder">
-      <charset>UTF-8</charset>
-      <pattern>%d{yyyy-MM-dd HH:mm:ss} %highlight(%-5level) %cyan(%logger{36}) %magenta(%X{pekkoSource}) %msg%n</pattern>
-    </encoder>
-  </appender>
+  <import class="net.logstash.logback.encoder.LogstashEncoder"/>
+  <import class="net.logstash.logback.mask.MaskingJsonGeneratorDecorator"/>
 
   <appender name="STDOUT" class="ConsoleAppender">
-    <!--
-         On Windows, enabling Jansi is recommended to benefit from color code interpretation on DOS command prompts,
-         which otherwise risk being sent ANSI escape sequences that they cannot interpret.
-         See https://logback.qos.ch/manual/layouts.html#coloring
-    -->
-    <!-- <withJansi>true</withJansi> -->
-    <encoder class="PatternLayoutEncoder">
-      <charset>UTF-8</charset>
-      <pattern>%d{yyyy-MM-dd HH:mm:ss} %highlight(%-5level) %cyan(%logger{36}) %magenta(%X{pekkoSource}) %msg%n</pattern>
+    <encoder class="LogstashEncoder">
+      <!-- Play が logback の context に入れる application.home が全行に付くので外す -->
+      <includeContext>false</includeContext>
+      <!-- 値を隠すのは logging.LogMasking が担う (出してよいキーだけ列挙する方式)。
+           ここ (9 系では jsonGeneratorDecorator ではなく decorator) は、URL を持つ項目をうっかりそのままログに渡したときの保険。どの階層にあっても隠す。 -->
+      <decorator class="MaskingJsonGeneratorDecorator">
+        <defaultMask>***</defaultMask>
+        <path>url</path>
+        <path>shortUrl</path>
+        <path>originalUrl</path>
+      </decorator>
     </encoder>
-  </appender>
-
-  <appender name="ASYNCFILE" class="AsyncAppender">
-    <appender-ref ref="FILE"/>
   </appender>
 
   <appender name="ASYNCSTDOUT" class="AsyncAppender">
+    <!-- 既定ではキューが混むと INFO 以下を捨てるので、アクセスログが欠けないよう捨てない -->
+    <discardingThreshold>0</discardingThreshold>
     <appender-ref ref="STDOUT"/>
   </appender>
 
   <logger name="play" level="INFO"/>
-  <logger name="application" level="DEBUG"/>
+  <!-- logging.AccessLogFilter -->
+  <logger name="access" level="INFO"/>
+  <logger name="controllers" level="INFO"/>
 
   <root level="WARN">
-    <appender-ref ref="ASYNCFILE"/>
     <appender-ref ref="ASYNCSTDOUT"/>
   </root>
 

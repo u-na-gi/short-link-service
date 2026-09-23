@@ -21,9 +21,34 @@ class Module extends AbstractModule {
   def publicBaseUrl(configuration: Configuration): PublicBaseUrl =
     PublicBaseUrl
       .from(configuration.get[String]("shortener.base-url"))
-      .fold(message => throw configuration.reportError("shortener.base-url", message), identity)
+      .fold(
+        error =>
+          throw configuration.reportError(
+            "shortener.base-url",
+            Module.describe(error),
+            // パースの失敗は元の例外を cause に付け、stack trace から原因を追えるようにする。
+            PartialFunction.condOpt(error) { case PublicBaseUrl.Error.Malformed(cause) => cause }
+          ),
+        identity
+      )
 
   @Provides
   @Singleton
   def serviceHost(baseUrl: PublicBaseUrl): ServiceHost = baseUrl.host
+}
+
+object Module {
+
+  /** サーバのログにだけ出る (起動失敗) ので英語で書く。 */
+  private def describe(error: PublicBaseUrl.Error): String = error match {
+    case PublicBaseUrl.Error.Malformed(cause)          => s"not a valid URL: ${cause.getMessage}"
+    case PublicBaseUrl.Error.UnsupportedScheme(scheme) =>
+      s"scheme must be http or https (got: ${scheme.getOrElse("none")})"
+    case PublicBaseUrl.Error.MissingHost   => "host is missing"
+    case PublicBaseUrl.Error.HasUserInfo   => "user info is not allowed"
+    case PublicBaseUrl.Error.HasQuery      => "query is not allowed"
+    case PublicBaseUrl.Error.HasFragment   => "fragment is not allowed"
+    case PublicBaseUrl.Error.HasPath(path) =>
+      s"path is not allowed (got: $path); short URLs are served at /{code}"
+  }
 }

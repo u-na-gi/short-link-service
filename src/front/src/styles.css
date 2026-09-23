@@ -117,7 +117,7 @@ input {
   cursor: progress;
 }
 
-:is(.search-submit, .copy, .result-url):focus-visible {
+:is(.search-submit, .copy, .result-url, .resolved-url):focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
@@ -185,6 +185,27 @@ input {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 短縮の結果が伸びても、復元フォームは結果の下に続けて置く。 */
+.resolve {
+  margin-top: 56px;
+}
+
+/* 元の URL は長いことが多いので、短縮 URL より小さくして折り返す。 */
+.resolved-url {
+  color: var(--link);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.resolved-url:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  text-decoration-thickness: 1px;
 }
 
 .result .error {
