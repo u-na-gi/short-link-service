@@ -16,6 +16,8 @@ const retryLater = "時間をおいて、もう一度お試しください。";
 
 /** エラーコードで出し分けないときの文言。短縮と復元で共通。 */
 function describeCommon(status: number): string {
+  if (status === 429)
+    return "短い時間に何度も送信されました。1 分ほど待ってから、もう一度お試しください。";
   return status >= 500
     ? `サーバーでエラーが起きました。${retryLater}`
     : `うまくいきませんでした (${status})。${retryLater}`;
@@ -31,6 +33,8 @@ function describeShorten(status: number, body: ErrorBody | null): string {
       return "すでに短縮された URL です。元に戻すなら下の欄に貼り付けてください。";
     case "code_generation_failed":
       return `短縮 URL を発行できませんでした。${retryLater}`;
+    case "storage_full":
+      return "発行できる件数の上限に達したため、新しい短縮 URL を発行できません。";
     default:
       return describeCommon(status);
   }
