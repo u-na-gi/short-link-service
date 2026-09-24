@@ -1,0 +1,85 @@
+{
+  "family": "short-link-{{ must_env `ENV` }}-server",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "512",
+  "memory": "2048",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "executionRoleArn": "{{ tfstate `output.task_execution_role_arn` }}",
+  "taskRoleArn": "{{ tfstate `output.task_role_arn` }}",
+  "containerDefinitions": [
+    {
+      "name": "server",
+      "image": "{{ shared_tfstate `output.server_repository_url` }}:{{ must_env `IMAGE_TAG` }}",
+      "essential": true,
+      "portMappings": [
+        {
+          "name": "http",
+          "containerPort": 9000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "SHORTENER_BASE_URL",
+          "value": "{{ tfstate `output.public_base_url` }}"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "PLAY_HTTP_SECRET_KEY",
+          "valueFrom": "{{ tfstate `output.play_http_secret_key_parameter_arn` }}"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "{{ tfstate `output.server_log_group_name` }}",
+          "awslogs-region": "ap-northeast-1",
+          "awslogs-stream-prefix": "server",
+          "mode": "non-blocking"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -fsS -o /dev/null http://localhost:9000/api/v1/health || exit 1"],
+        "interval": 10,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      },
+      "memory": 1536,
+      "stopTimeout": 30
+    },
+    {
+      "name": "cloudflared",
+      "image": "cloudflare/cloudflared:2026.9.1",
+      "essential": true,
+      "command": ["tunnel", "--no-autoupdate", "run"],
+      "dependsOn": [
+        {
+          "containerName": "server",
+          "condition": "HEALTHY"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "TUNNEL_TOKEN",
+          "valueFrom": "{{ tfstate `output.tunnel_token_parameter_arn` }}"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "{{ tfstate `output.server_log_group_name` }}",
+          "awslogs-region": "ap-northeast-1",
+          "awslogs-stream-prefix": "cloudflared",
+          "mode": "non-blocking"
+        }
+      },
+      "memory": 256
+    }
+  ]
+}

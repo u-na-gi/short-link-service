@@ -10,6 +10,9 @@ enum CreateShortLinkError {
 
   /** 採番を上限回数やり直しても空きコードが取れなかった。 */
   case CodeExhausted
+
+  /** 保存できる件数の上限に達している。登録済みの URL なら上限に関係なく既存のリンクを返す。 */
+  case StorageFull
 }
 
 /** 「URL を受け取って短縮リンクを発行し、保存する」という業務操作。
@@ -37,8 +40,9 @@ class CreateShortLink @Inject() (
           case None           =>
             shortLinkService
               .issue(url)
-              .map(_.left.map { case ShortLinkService.Error.CodeExhausted =>
-                CreateShortLinkError.CodeExhausted
+              .map(_.left.map {
+                case ShortLinkService.Error.CodeExhausted => CreateShortLinkError.CodeExhausted
+                case ShortLinkService.Error.StorageFull   => CreateShortLinkError.StorageFull
               })
         }
     }

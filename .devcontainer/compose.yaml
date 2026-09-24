@@ -28,6 +28,14 @@ services:
       # ホスト側ディレクトリは devcontainer.json の initializeCommand がユーザー所有で作る
       - ${HOME}/.config/gh:/home/dev/.config/gh
 
+      # ---- AWS の認証情報 (SSO のプロファイルとトークンのキャッシュ) ----
+      # aws sso login がキャッシュを書くので読み書きでマウントする。
+      # ホスト側ディレクトリは devcontainer.json の initializeCommand が作る
+      - ${HOME}/.aws:/home/dev/.aws
+
+      # ---- aqua で落とした CLI (terraform など) ----
+      - aqua-cache:/home/dev/.local/share/aquaproj-aqua
+
       # ---- Claude Code の認証と設定 ----
       # ~/.claude.json をファイル単位で bind mount すると、Claude Code が「一時ファイルに
       # 書いて rename」で更新するたびに inode が入れ替わって壊れる (毎回ログインを求め
@@ -40,3 +48,4 @@ volumes:
   ivy2-cache:
   coursier-cache:
   claude-config:
+  aqua-cache:

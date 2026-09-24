@@ -6,7 +6,7 @@ import java.net.{URI, URISyntaxException}
   *
   * 短縮 URL は Host ヘッダではなく必ずこの値から組み立てる。
   *
-  * CloudFront を挟むと Host は origin 側の名前になり、TLS 終端の後ろではスキームも http に見える。
+  * 本番は Cloudflare Worker と Tunnel を挟むので Host は localhost:9000 になり、TLS 終端の後ろではスキームも http に見える。
   *
   * そもそも Host ヘッダはクライアントが偽装できる。
   */

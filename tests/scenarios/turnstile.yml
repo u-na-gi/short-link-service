@@ -1,0 +1,64 @@
+desc: Turnstile をかけた環境では、トークンの無い短縮と復元を 403 で断る
+labels:
+  - turnstile
+# Turnstile をかけた環境 (staging / prod) だけ。make e2e-remote が E2E_TURNSTILE=on を渡す
+if: env.E2E_TURNSTILE == 'on'
+runners:
+  req:
+    endpoint: ${E2E_BASE_URL:-http://localhost:9000}
+    notFollowRedirect: true
+vars:
+  # Cloudflare Access (develop / staging) を通るサービストークン。make e2e-remote が SSM から渡す。
+  # ローカル (make e2e) では空で送り、Vite / Play は無視する。全ステップの headers で使う
+  access: &access
+    CF-Access-Client-Id: "${CF_ACCESS_CLIENT_ID:-}"
+    CF-Access-Client-Secret: "${CF_ACCESS_CLIENT_SECRET:-}"
+steps:
+  shortenWithoutToken:
+    desc: トークンが無ければ短縮は 403 turnstile_failed
+    req:
+      /api/v1/links:
+        post:
+          headers: *access
+          body:
+            application/json:
+              url: https://www.example.org/
+    test: |
+      current.res.status == 403
+      && current.res.body.error == 'turnstile_failed'
+  shortenWithBogusToken:
+    desc: 偽のトークンでも短縮は 403 turnstile_failed
+    req:
+      /api/v1/links:
+        post:
+          headers:
+            <<: *access
+            X-Turnstile-Token: bogus
+          body:
+            application/json:
+              url: https://www.example.org/
+    test: |
+      current.res.status == 403
+      && current.res.body.error == 'turnstile_failed'
+  resolveWithoutToken:
+    desc: トークンが無ければ復元は 403 turnstile_failed
+    req:
+      /api/v1/links/resolve?shortUrl={{ urlencode(env.E2E_BASE_URL + '/abcd1234') }}:
+        get:
+          headers:
+            <<: *access
+            Accept: application/json
+    test: |
+      current.res.status == 403
+      && current.res.body.error == 'turnstile_failed'
+  redirectIsNotProtected:
+    desc: 短縮 URL のリダイレクトには Turnstile をかけない (未登録なら 404 not_found)
+    req:
+      /zzzzzzzz:
+        get:
+          headers:
+            <<: *access
+            Accept: application/json
+    test: |
+      current.res.status == 404
+      && current.res.body.error == 'not_found'

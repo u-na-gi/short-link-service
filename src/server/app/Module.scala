@@ -1,6 +1,6 @@
 import com.google.inject.{AbstractModule, Provides}
 import domain.{PublicBaseUrl, ServiceHost, ShortLinkRepository, ShortLinkService}
-import infra.inmemory.InMemoryShortLinkRepository
+import infra.inmemory.{InMemoryShortLinkRepository, LinkCapacity}
 import javax.inject.Singleton
 import play.api.Configuration
 import service.DefaultShortLinkService
@@ -35,6 +35,15 @@ class Module extends AbstractModule {
   @Provides
   @Singleton
   def serviceHost(baseUrl: PublicBaseUrl): ServiceHost = baseUrl.host
+
+  @Provides
+  @Singleton
+  def linkCapacity(configuration: Configuration): LinkCapacity = {
+    val maxLinks = configuration.get[Int]("shortener.max-links")
+    if (maxLinks <= 0)
+      throw configuration.reportError("shortener.max-links", s"must be positive (got: $maxLinks)")
+    LinkCapacity(maxLinks)
+  }
 }
 
 object Module {

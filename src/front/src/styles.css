@@ -228,3 +228,24 @@ input {
     transition: none;
   }
 }
+
+/* Turnstile のチェック。Cloudflare が必要と判断したときだけ中身が入る */
+.turnstile:empty {
+  display: none;
+}
+
+.turnstile {
+  padding-inline: 20px;
+  margin-top: 12px;
+}
+
+/* サービスを終了する予定の案内。目立たせすぎず、フォームの前に読める位置に置く */
+.notice {
+  margin: 0 0 20px;
+  padding: 10px 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}

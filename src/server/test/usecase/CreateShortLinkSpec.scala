@@ -116,5 +116,22 @@ class CreateShortLinkSpec extends AnyWordSpec with Matchers with ScalaFutures {
         .execute("https://example.com")
         .futureValue shouldBe Left(CreateShortLinkError.CodeExhausted)
     }
+
+    "件数の上限に達していたら StorageFull を返す" in {
+      val repository = new InMemoryShortLinkRepository(maxLinks = 1)
+      val usecase = newUsecase(repository, codes = new SequenceCodes("first001", "second02"))
+      usecase.execute("https://a.example").futureValue
+
+      usecase.execute("https://b.example").futureValue shouldBe
+        Left(CreateShortLinkError.StorageFull)
+    }
+
+    "件数の上限に達していても、登録済みの URL なら既存のリンクを返す" in {
+      val repository = new InMemoryShortLinkRepository(maxLinks = 1)
+      val usecase = newUsecase(repository, codes = new SequenceCodes("first001", "second02"))
+      usecase.execute("https://a.example").futureValue
+
+      usecase.execute("https://a.example").futureValue.map(_.code) shouldBe Right("first001")
+    }
   }
 }

@@ -17,7 +17,10 @@
   // コンテナ作成前にホスト側で実行される。bind mount 元がホストに無いと Docker が
   // root 所有で自動作成し、コンテナ内から書けなくなる (gh auth の hosts.yml 等)。
   // ~/.gitconfig はファイルなので、無ければ空で作っておく
-  "initializeCommand": "mkdir -p \"$HOME/.config/gh\" \"$HOME/.ssh\" && touch \"$HOME/.gitconfig\"",
+  "initializeCommand": "mkdir -p \"$HOME/.config/gh\" \"$HOME/.ssh\" \"$HOME/.aws\" && touch \"$HOME/.gitconfig\"",
+
+  // aqua.yaml の CLI へのリンクを作る。実体は初回実行時に落ちる
+  "postCreateCommand": "aqua i -l",
 
   // DooD (Docker outside of Docker): ホストの Docker デーモンをコンテナ内から使う
   "features": {

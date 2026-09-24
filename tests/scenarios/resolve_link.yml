@@ -1,12 +1,19 @@
 desc: 短縮URLから元URLへ戻す (302 リダイレクトと復元 API)
 labels:
   - links
+# Turnstile をかけた環境 (staging / prod) ではトークンを取れないので流さない。turnstile.yml が 403 を確かめる
+if: env.E2E_TURNSTILE != 'on'
 runners:
   req:
     endpoint: ${E2E_BASE_URL:-http://localhost:9000}
     # 302 そのものとその Location を検証したいので、リダイレクトは追わない
     notFollowRedirect: true
 vars:
+  # Cloudflare Access (develop / staging) を通るサービストークン。make e2e-remote が SSM から渡す。
+  # ローカル (make e2e) では空で送り、Vite / Play は無視する。全ステップの headers で使う
+  access: &access
+    CF-Access-Client-Id: "${CF_ACCESS_CLIENT_ID:-}"
+    CF-Access-Client-Secret: "${CF_ACCESS_CLIENT_SECRET:-}"
   originalUrl: https://www.example.org/
   # 形は正しいが未発行の短縮URL。ホストは server の shortener.base-url と揃える (E2E_SELF_URL と同じ考え方)
   unknownShortUrl: ${E2E_UNKNOWN_SHORT_URL:-https://example.com/zzzzzzzz}
@@ -16,6 +23,7 @@ steps:
     req:
       /api/v1/links:
         post:
+          headers: *access
           body:
             application/json:
               url: "{{ vars.originalUrl }}"
@@ -28,6 +36,7 @@ steps:
       /{{ code }}:
         get:
           headers:
+            <<: *access
             Accept: application/json
     test: |
       current.res.status == 302
@@ -38,6 +47,7 @@ steps:
       /zzzzzzzz:
         get:
           headers:
+            <<: *access
             Accept: application/json
     test: |
       current.res.status == 404
@@ -48,6 +58,7 @@ steps:
       /api/v1/links/resolve?shortUrl={{ urlencode(steps.create.res.body.shortUrl) }}:
         get:
           headers:
+            <<: *access
             Accept: application/json
     test: |
       current.res.status == 200
@@ -60,6 +71,7 @@ steps:
       /api/v1/links/resolve?shortUrl={{ urlencode(vars.unknownShortUrl) }}:
         get:
           headers:
+            <<: *access
             Accept: application/json
     test: |
       current.res.status == 404
@@ -70,6 +82,7 @@ steps:
       /api/v1/links/resolve?shortUrl={{ urlencode('https://other.example/abcd1234') }}:
         get:
           headers:
+            <<: *access
             Accept: application/json
     test: |
       current.res.status == 400
@@ -80,6 +93,7 @@ steps:
       /api/v1/links/resolve:
         get:
           headers:
+            <<: *access
             Accept: application/json
     test: |
       current.res.status == 400

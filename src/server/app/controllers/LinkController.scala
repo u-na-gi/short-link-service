@@ -53,6 +53,12 @@ class LinkController @Inject() (
                 RequestLog.marker(request)
               )
               InternalServerError(errorJson("code_generation_failed"))
+            case Left(CreateShortLinkError.StorageFull) =>
+              // 上限 (shortener.max-links) を上げるか再起動しない限り続くので、運用で気づけるよう残す
+              logger.warn("refused to issue a short code: storage is full")(using
+                RequestLog.marker(request)
+              )
+              ServiceUnavailable(errorJson("storage_full"))
           }
       )
   }

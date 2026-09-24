@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type ClipboardEvent, type SubmitEvent } from "react";
 import { shortenUrl, type ShortLink } from "./api.ts";
 import { ResolveForm } from "./ResolveForm.tsx";
+import { useTurnstile } from "./turnstile.ts";
 import { describeUrlProblem, findUrlProblem } from "./url.ts";
 
 type State =
@@ -20,6 +21,7 @@ export function App() {
   const latest = useRef(0);
   const lastSubmitted = useRef("");
   const errorId = useId();
+  const turnstile = useTurnstile("shorten");
 
   async function submit(raw: string) {
     const url = raw.trim();
@@ -38,14 +40,14 @@ export function App() {
     setState({ kind: "loading" });
     setCopy("idle");
 
-    const result = await shortenUrl(url);
+    const result = await shortenUrl(url, await turnstile.getToken());
     if (id !== latest.current) return;
     setState(
       result.ok ? { kind: "done", link: result.link } : { kind: "error", message: result.message },
     );
   }
 
-  function onSubmit(e: FormEvent<HTMLFormElement>) {
+  function onSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     void submit(value);
   }
@@ -91,6 +93,11 @@ export function App() {
 
   return (
     <main className="page">
+      {/* 公開はしているが、あとで消す前提のサービスなので、使う前に分かるよう最初に出す */}
+      <p className="notice" role="note">
+        このサービスは試験的に公開しているもので、予告なく終了します。作った短縮 URL
+        もいつ消えるか分かりません。大切なリンクには使わないでください。
+      </p>
       <form className="search" onSubmit={onSubmit} noValidate aria-busy={loading}>
         <label className="visually-hidden" htmlFor="url">
           短くしたい URL
@@ -116,6 +123,8 @@ export function App() {
           {loading ? "短縮中…" : "短縮する"}
         </button>
       </form>
+      {/* Turnstile が必要と判断したときだけ、ここにチェックが出る */}
+      <div ref={turnstile.containerRef} className="turnstile" />
 
       <div className="outcome" aria-live="polite">
         {state.kind === "error" && (

@@ -1,0 +1,26 @@
+{
+  "launchType": "FARGATE",
+  "platformVersion": "LATEST",
+  "desiredCount": 1,
+  "deploymentConfiguration": {
+    "maximumPercent": 100,
+    "minimumHealthyPercent": 0,
+    "deploymentCircuitBreaker": {
+      "enable": true,
+      "rollback": true
+    }
+  },
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": [
+        "{{ tfstate `output.public_subnet_ids[0]` }}",
+        "{{ tfstate `output.public_subnet_ids[1]` }}"
+      ],
+      "securityGroups": ["{{ tfstate `output.task_security_group_id` }}"],
+      "assignPublicIp": "ENABLED"
+    }
+  },
+  "enableECSManagedTags": true,
+  "propagateTags": "SERVICE",
+  "schedulingStrategy": "REPLICA"
+}
