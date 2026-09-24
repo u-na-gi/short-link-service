@@ -113,4 +113,17 @@ AWS サポートの解除を待たずに動かすため、ユーザーと相談�
      - E2E は Access のサービストークンで通す (ユーザー了承)。トークンは Terraform で作って SSM (`/short-link-<env>/e2e/access-client-{id,secret}`) へ。シナリオは全ステップの headers に `*access` (vars のアンカー)。`make e2e-remote ENV=develop`
      - `make e2e-remote ENV=develop` で 4 シナリオ 16 ステップが Access 越しに通ることを確認済み
    - [ ] 9. destroy 手順 (ECS の service を 0 にしてから terraform destroy。cloudflared が繋がったままだと Tunnel を消せない)、`docs/production-architecture.md` / `src/server/CLAUDE.md` を実際の構成に書き直す
-4. その後: staging / prod を足す (Turnstile はここで)、CI (GitHub Actions + OIDC) に載せる
+4. staging / prod と Turnstile
+   - [x] `envs/staging` (`s-stg.u-na-gi.com`、10.20.0.0/16、Access あり) と `envs/prod` (`s.u-na-gi.com`、10.30.0.0/16、Access なし) を apply (Turnstile のウィジェット以外)
+   - [x] staging / prod の ECS を develop と同じイメージで deploy
+   - [x] Worker の Turnstile 検証 (`worker/turnstile.ts`。短縮 / 復元だけ、action とホスト名も照合、siteverify に繋がらなければ断る、`TURNSTILE=on` なのにシークレットが無ければ断る)
+   - [x] front のウィジェット (`src/turnstile.ts`。普段は見えず必要なときだけチェック、送信ごとに新しいトークン、サイトキーの無い環境では何もしない)
+   - [x] `make deploy-front ENV=...` (サイトキーはビルドに、シークレットは `--secrets-file` で同じバージョンに)。null の output は state に載らないので空として扱う
+   - [x] E2E: Turnstile の環境では機能のシナリオを飛ばし、`turnstile.yml` でトークン無し・偽トークンが 403 になることを見る。機能の E2E は develop で流す (Access のサービストークンで Turnstile を迂回させると穴になるので、しない)
+   - [x] Turnstile のウィジェットを apply、`make deploy-front` で staging / prod に deploy、`make e2e-remote` が staging / prod で通る (Turnstile の 403 と、リダイレクトにはかからないこと)
+     - Cloudflare のトークンの権限は、変えてから効くまで数分かかることがある (Access のサービストークン、Turnstile とも、直後は 403 だった)
+     - 手元 (devcontainer) の DNS は Tailscale 経由らしく、作ったばかりのホスト名 (`s.u-na-gi.com`) が引けたり引けなかったりした。公開 DNS (1.1.1.1) では安定して引けたので、E2E の失敗が名前解決なら疑う
+   - [ ] ブラウザでの確認 (ユーザー): staging / prod で短縮と復元ができ、Turnstile が通ること
+5. CI (GitHub Actions + OIDC) に載せる
+   - CI の環境変数・シークレットは **GitHub Environments** (develop / staging / prod) で持つ (ユーザー指定)。Environments とその変数・シークレットは Terraform の `github` モジュール (integrations/github provider) で管理する
+   - `wrangler.jsonc` の VPC Service の ID とホスト名の二重管理もここで片付ける
