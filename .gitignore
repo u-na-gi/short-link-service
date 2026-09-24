@@ -3,3 +3,10 @@ memo.txt
 .metals
 .scala-build
 .env
+.envrc.local
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfplan
