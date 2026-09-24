@@ -71,7 +71,7 @@ jobs:
       - run: bun run build
 
   tests-lint:
-    name: E2E シナリオの整形と lint
+    name: E2E シナリオの整形
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -82,8 +82,8 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
+      # oxlint (bun run lint) は、lint する TypeScript が tests/ に無いので流さない (ファイルが無いと失敗する)
       - run: bun run format:check
-      - run: bun run lint
 
   terraform:
     name: terraform (fmt / validate / tflint)
