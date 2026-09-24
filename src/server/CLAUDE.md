@@ -34,16 +34,17 @@ make e2e   # E2E 専用の compose で起動し、runn のシナリオを front 
 
 - `domain/` — Play に依存しない中核。
   - `Url` は検証済み URL の値オブジェクト。コンストラクタは private で `Url.from(raw): Either[Url.Error, Url]` 経由でのみ生成する。okhttp の `HttpUrl` でパース・正規化 (punycode 化、ホスト小文字化) し、http/https 以外のスキーム・認証情報付き URL・2048 文字超を拒否する。
-  - `ShortLinkRepository` / `ShortLinkService` は trait。実装は外側に置く。`ShortLinkService.issue(url)` は一意なコードを振って保存までを担う。`saveIfAbsent` はコード重複 (`CodeTaken`) と URL 登録済み (`UrlExists`) を判定と保存を不可分にして返す。
+  - `ShortLinkRepository` / `ShortLinkService` は trait。実装は外側に置く。`ShortLinkService.issue(url)` は一意なコードを振って保存までを担う。`saveIfAbsent` はコード重複 (`CodeTaken`)、URL 登録済み (`UrlExists`)、件数の上限 (`Full`) を判定と保存を不可分にして返す。URL が登録済みなら上限に関係なく既存のリンクを返す。
   - `PublicBaseUrl` は利用者に見せる自サービスの公開 URL (スキーム + ホスト [+ ポート])。短縮 URL は Host ヘッダではなく必ずこれから組み立てる (CloudFront 越しだと Host が origin 側になり、偽装もできるため)。
   - `ServiceHost` は自サービスのホスト名で、`PublicBaseUrl` から導く。自己参照 URL (リダイレクトループ) の拒否に使う。
   - `PublicBaseUrl.codeOf(raw)` は自サービスの短縮 URL からコードを取り出す。ホスト名だけで判定し (`ServiceHost` と同じ基準)、パスは英数 8 文字の 1 階層だけ。クエリ・フラグメントは無視する。
 - `usecase/` — 業務操作。`CreateShortLink.execute(rawUrl)` は生文字列を受け取り VO 変換まで内側で行い、`Future[Either[CreateShortLinkError, ShortLink]]` を返す。エラーは enum で表現し、例外は使わない。
-  - 同じ URL には同じリンクを返す。`findByUrl` で登録済みなら採番しない。未登録なら `ShortLinkService.issue` に発行を任せ、その `CodeExhausted` を usecase のエラーに写す。
+  - 同じ URL には同じリンクを返す。`findByUrl` で登録済みなら採番しない。未登録なら `ShortLinkService.issue` に発行を任せ、その `CodeExhausted` / `StorageFull` を usecase のエラーに写す。
   - `ResolveShortLink.execute(code)` はコードからリンクを引く (リダイレクト用)。`fromShortUrl(raw)` は貼り付けられた短縮 URL を `codeOf` で解釈して引き、`NotShortUrl` / `NotFound` を返す。
 - `service/DefaultShortLinkService` — `ShortLinkService` の実装。`SecureRandom` で英数 8 文字のコードを採番して `saveIfAbsent` し、コードが被ったら最大 10 回まで採番し直す (超えたら `CodeExhausted`)。採番し直しは乱数方式の都合なので usecase ではなくここに置く。テストでは主コンストラクタにコード生成関数 (`test/support/SequenceCodes`) を渡して固定する。
 - `infra/inmemory/InMemoryShortLinkRepository` — コード→リンク、URL→リンクの 2 つの `TrieMap` による実装 (再起動で消える)。書き込みだけ `synchronized`。
-- `controllers/` — HTTP の関心事だけ。JSON の形は `Reads` で検証し (`invalid_request`)、業務エラーは usecase の enum を `error` コード (400 `invalid_url` / `self_reference` / `not_short_url`、404 `not_found`、500 `code_generation_failed`) にマップする。作成と復元は同じ形 (`code` / `shortUrl` / `originalUrl`) を返す。
+  - 公開の書き込み API でメモリを使い切られないよう、件数に上限を持つ (`shortener.max-links`、環境変数 `SHORTENER_MAX_LINKS`、既定 10 万件)。`TrieMap.size` は O(n) なので、件数は書き込みと同じロックの中でカウンタで数える。上限は `Module` が `LinkCapacity` として検証して渡す (0 以下なら起動を止める)。テストでは主コンストラクタの `maxLinks` (既定は上限なし) を使う。
+- `controllers/` — HTTP の関心事だけ。JSON の形は `Reads` で検証し (`invalid_request`)、業務エラーは usecase の enum を `error` コード (400 `invalid_url` / `self_reference` / `not_short_url`、404 `not_found`、500 `code_generation_failed`、503 `storage_full`) にマップする。作成と復元は同じ形 (`code` / `shortUrl` / `originalUrl`) を返す。
   - エラーの body は `{"error": コード}` だけ。`invalid_url` だけは `reason` (`empty` / `malformed` / `unsupported_scheme` / `credentials` / `too_long`、フロントの `UrlProblem` と同じ値) を付ける。入力値・上限値・検証の詳細・内部の事情は返さない。利用者向けの日本語の文言はフロント (`src/front/src/api.ts`) がコードから組み立てる。
   - domain / usecase のエラーは enum で返し、文言を持たせない。`PublicBaseUrl.from` のエラーも `PublicBaseUrl.Error` で、`Module` が英語のメッセージにして起動を止める (パース失敗は元の例外を cause に付ける)。
 - `app/Module.scala` — Guice のバインディングを集約 (trait → 実装)。`shortener.base-url` 設定 (`conf/application.conf`、環境変数 `SHORTENER_BASE_URL` で上書き可。既定はフロントの Vite `http://localhost:5173`) を検証して `PublicBaseUrl` / `ServiceHost` として `@Provides` し、usecase が Play の `Configuration` に依存しないようにしている。

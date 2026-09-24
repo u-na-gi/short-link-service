@@ -35,6 +35,7 @@ class DefaultShortLinkService(
         case SaveResult.Saved               => Future.successful(Right(link))
         case SaveResult.UrlExists(existing) => Future.successful(Right(existing))
         case SaveResult.CodeTaken           => issue(url, attemptsLeft - 1)
+        case SaveResult.Full => Future.successful(Left(ShortLinkService.Error.StorageFull))
       }
     }
 }

@@ -70,6 +70,17 @@ class DefaultShortLinkServiceSpec extends AnyWordSpec with Matchers with ScalaFu
       codes.calls shouldBe DefaultShortLinkService.MaxAttempts
     }
 
+    "件数の上限に達していたら StorageFull を返し、採番し直さない" in {
+      val repository = new InMemoryShortLinkRepository(maxLinks = 1)
+      repository.saveIfAbsent(ShortLink("fixed123", url("https://taken.example"))).futureValue
+
+      val codes = new SequenceCodes("fresh001")
+      new DefaultShortLinkService(repository, codes)
+        .issue(url("https://example.com"))
+        .futureValue shouldBe Left(ShortLinkService.Error.StorageFull)
+      codes.calls shouldBe 1
+    }
+
     "並行リクエストに先を越されていたら既存のリンクを返す" in {
       val repository = new InMemoryShortLinkRepository()
       val existing = ShortLink("first001", url("https://example.com"))

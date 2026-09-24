@@ -17,5 +17,8 @@ object ShortLinkService {
 
     /** 採番を上限回数やり直しても空きコードが取れなかった。 */
     case CodeExhausted
+
+    /** 保存できる件数の上限に達している。 */
+    case StorageFull
   }
 }
