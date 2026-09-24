@@ -5,6 +5,11 @@ labels:
 runners:
   req: ${E2E_BASE_URL:-http://localhost:9000}
 vars:
+  # Cloudflare Access (develop / staging) を通るサービストークン。make e2e-remote が SSM から渡す。
+  # ローカル (make e2e) では空で送り、Vite / Play は無視する。全ステップの headers で使う
+  access: &access
+    CF-Access-Client-Id: "${CF_ACCESS_CLIENT_ID:-}"
+    CF-Access-Client-Secret: "${CF_ACCESS_CLIENT_SECRET:-}"
   # 自サービス宛の判定はサーバ側の shortener.base-url のホストと突き合わせる。
   # 向き先を変えるときは E2E_BASE_URL と一緒にこちらも揃える
   selfUrl: ${E2E_SELF_URL:-http://localhost:9000/abcd1234}
@@ -14,6 +19,7 @@ steps:
     req:
       /api/v1/links:
         post:
+          headers: *access
           body:
             application/json: {}
     test: |
@@ -24,6 +30,7 @@ steps:
     req:
       /api/v1/links:
         post:
+          headers: *access
           body:
             application/json:
               url: 123
@@ -35,6 +42,7 @@ steps:
     req:
       /api/v1/links:
         post:
+          headers: *access
           body:
             application/json:
               url: ""
@@ -46,6 +54,7 @@ steps:
     req:
       /api/v1/links:
         post:
+          headers: *access
           body:
             application/json:
               url: "{{ vars.selfUrl }}"
@@ -57,6 +66,7 @@ steps:
     req:
       /api/v1/links:
         post:
+          headers: *access
           body:
             application/json:
               url: "https://user:pass@evil.example.com/"
@@ -68,6 +78,7 @@ steps:
     req:
       /api/v1/links:
         post:
+          headers: *access
           body:
             application/json:
               url: "ftp://example.com"

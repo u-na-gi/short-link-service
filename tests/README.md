@@ -170,11 +170,26 @@ sequenceDiagram
 
 シナリオ内で参照される環境変数です。`compose.e2e.yaml` の `runn` サービスで注入されています。
 
-| 環境変数名              | デフォルト値                     | Compose での値                 | 説明                                                                                                           |
-| ----------------------- | -------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `E2E_BASE_URL`          | `http://localhost:9000`          | `http://front:5173`            | テスト対象のベース URL。Compose では Vite プロキシ経由。                                                       |
-| `E2E_SELF_URL`          | `http://localhost:9000/abcd1234` | `https://example.com/abcd1234` | 自己参照エラー検証用のダミー URL。API サーバの `SHORTENER_BASE_URL` とホスト名を一致させておく必要があります。 |
-| `E2E_UNKNOWN_SHORT_URL` | `https://example.com/zzzzzzzz`   | `https://example.com/zzzzzzzz` | 存在しない短縮 URL の復元検証用 URL。                                                                          |
+| 環境変数名                | デフォルト値                     | Compose での値                 | 説明                                                                                                           |
+| ------------------------- | -------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `E2E_BASE_URL`            | `http://localhost:9000`          | `http://front:5173`            | テスト対象のベース URL。Compose では Vite プロキシ経由。                                                       |
+| `E2E_SELF_URL`            | `http://localhost:9000/abcd1234` | `https://example.com/abcd1234` | 自己参照エラー検証用のダミー URL。API サーバの `SHORTENER_BASE_URL` とホスト名を一致させておく必要があります。 |
+| `E2E_UNKNOWN_SHORT_URL`   | `https://example.com/zzzzzzzz`   | `https://example.com/zzzzzzzz` | 存在しない短縮 URL の復元検証用 URL。                                                                          |
+| `CF_ACCESS_CLIENT_ID`     | (空)                             | (空)                           | Cloudflare Access のサービストークン。`make e2e-remote` が SSM から渡す。ローカルでは空で送られ、無視される。  |
+| `CF_ACCESS_CLIENT_SECRET` | (空)                             | (空)                           | 同上のシークレット。                                                                                           |
+
+### デプロイ済みの環境に流す (`make e2e-remote`)
+
+develop / staging は Cloudflare Access で守られているので、サービストークンのヘッダ (`CF-Access-Client-Id` / `CF-Access-Client-Secret`) を付けて流します。
+各シナリオの `vars.access` に YAML のアンカーとして定義し、すべてのステップの `headers` で参照しています。シナリオを足すときも、ステップに `headers: *access` (ほかのヘッダと並べるなら `<<: *access`) を付けてください。
+
+```sh
+make e2e-remote ENV=develop
+```
+
+- 向き先は `infra/terraform/envs/<ENV>` の output `public_base_url`、トークンは SSM (`/short-link-<ENV>/e2e/access-client-{id,secret}`) から読みます。
+- Worker の回数制限 (API は IP ごとに 1 分 20 回) があるので、続けて流すときは 1 分空けてください。
+- `--debug` はリクエストヘッダ (トークンのシークレット) をそのまま出力します。調べるときだけ手元で使い、出力を残さないでください。
 
 ---
 

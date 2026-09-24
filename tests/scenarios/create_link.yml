@@ -4,6 +4,11 @@ labels:
 runners:
   req: ${E2E_BASE_URL:-http://localhost:9000}
 vars:
+  # Cloudflare Access (develop / staging) を通るサービストークン。make e2e-remote が SSM から渡す。
+  # ローカル (make e2e) では空で送り、Vite / Play は無視する。全ステップの headers で使う
+  access: &access
+    CF-Access-Client-Id: "${CF_ACCESS_CLIENT_ID:-}"
+    CF-Access-Client-Secret: "${CF_ACCESS_CLIENT_SECRET:-}"
   originalUrl: https://www.example.org/
 steps:
   create:
@@ -11,6 +16,7 @@ steps:
     req:
       /api/v1/links:
         post:
+          headers: *access
           body:
             application/json:
               url: "{{ vars.originalUrl }}"
@@ -26,6 +32,7 @@ steps:
     req:
       /api/v1/links:
         post:
+          headers: *access
           body:
             application/json:
               url: "{{ vars.originalUrl }}"
