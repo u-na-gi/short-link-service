@@ -52,7 +52,7 @@ class AccessLogFilter @Inject() ()(using ExecutionContext) extends EssentialFilt
     val fields = new java.util.LinkedHashMap[String, AnyRef]()
     RequestId.of(request).foreach(fields.put("requestId", _))
     fields.put("method", request.method)
-    // 本番は CloudFront、compose では Vite のプロキシが Host を書き換えるので、元の Host は X-Forwarded-Host にある。
+    // 本番は Cloudflare Worker、compose では Vite のプロキシが Host を書き換えるので、元の Host は X-Forwarded-Host にある。
     // 送り手が自由に付けられるヘッダなので、記録にだけ使う。
     fields.put("host", request.headers.get("X-Forwarded-Host").getOrElse(request.host))
     fields.put("path", request.path)

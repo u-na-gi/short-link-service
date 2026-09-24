@@ -1,0 +1,59 @@
+# syntax=docker/dockerfile:1
+# 本番用 (ECS で動かすイメージ)。開発用の Dockerfile とは別。
+#
+#   docker build --provenance=false --sbom=false -f Dockerfile.prod -t short-link-server .
+#
+# ECR に push するときは --provenance=false --sbom=false を付ける。付けないと BuildKit が attestation 付きの
+# image index を作り、タグは index に付いて実体のイメージはタグなしになる。ECR のライフサイクルルール
+# (タグなしは 1 日で消す) に実体を消され、タグ付きのイメージが壊れる。
+#
+# sbt stage (Play 同梱の sbt-native-packager) で target/universal/stage に bin/ lib/ conf/ を作り、
+# JRE だけのイメージに載せる。ビルドコンテキストに入れるものは Dockerfile.prod.dockerignore が決める。
+
+# JDK / sbt の版は開発用 (Dockerfile) と揃える
+ARG JAVA_VERSION=21
+ARG SBT_VERSION=1.13.0
+
+# --- build --------------------------------------------------------------------
+FROM eclipse-temurin:${JAVA_VERSION}-jdk-noble AS build
+
+ARG SBT_VERSION
+
+RUN curl -fsSL "https://github.com/sbt/sbt/releases/download/v${SBT_VERSION}/sbt-${SBT_VERSION}.tgz" \
+        | tar xzf - -C /usr/share \
+    && ln -s /usr/share/sbt/bin/sbt /usr/local/bin/sbt
+
+WORKDIR /build
+
+# 依存の解決だけ先に済ませて層を分ける。ソースだけ変えたときは依存を落とし直さない
+COPY build.sbt ./
+COPY project/build.properties project/plugins.sbt project/
+RUN sbt -batch update
+
+COPY app app
+COPY conf conf
+RUN sbt -batch stage
+# 起動スクリプトは 0744 で作られる。所有者を root のままにして app ユーザーで動かすので、
+# 誰でも実行できるようにする。Windows 用の .bat は要らない
+RUN chmod 0755 target/universal/stage/bin/server \
+    && rm target/universal/stage/bin/*.bat
+
+# --- runtime ------------------------------------------------------------------
+FROM eclipse-temurin:${JAVA_VERSION}-jre-noble
+
+# 公式イメージの ubuntu ユーザー (uid 1000) ではなく、専用のユーザーで動かす
+RUN groupadd --system app && useradd --system --gid app --no-create-home app
+
+WORKDIR /opt/app
+COPY --from=build --chown=root:root /build/target/universal/stage ./
+
+USER app
+
+EXPOSE 9000
+
+# JVM のヒープはコンテナのメモリ上限から決める
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=75"
+
+# Play は起動時に RUNNING_PID を書き、残っていると次の起動を拒む。コンテナでは要らないので書かせない。
+# play.http.secret.key は PLAY_HTTP_SECRET_KEY 環境変数で渡す (conf/application.conf、ECS では SSM から注入)
+CMD ["bin/server", "-Dpidfile.path=/dev/null"]

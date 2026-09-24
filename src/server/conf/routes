@@ -5,7 +5,7 @@
 
 # An example controller showing a sample home page
 GET     /                           controllers.HomeController.index()
-# フロント (Vite / CloudFront) 経由でも届くヘルスチェック。GET / はフロント側では index.html になる
+# フロント (Vite / Cloudflare Worker) 経由でも届くヘルスチェック。GET / はフロント側では index.html になる
 GET     /api/v1/health              controllers.HomeController.index()
 
 

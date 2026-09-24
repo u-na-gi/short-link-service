@@ -1,0 +1,7 @@
+# Dockerfile.prod のビルドコンテキスト。sbt stage に要るものだけ入れる
+*
+!build.sbt
+!project/build.properties
+!project/plugins.sbt
+!app/
+!conf/
