@@ -130,5 +130,16 @@ AWS サポートの解除を待たずに動かすため、ユーザーと相談�
    - [x] Actions: 外部の人の PR は承認してから動かす、ワークフローの既定の権限は読み取りだけ
    - これからのコミットでも、会社名・課題文・メールアドレス・アカウント ID・トークンを入れない (CI に秘密情報の検出を入れる)
 6. CI (GitHub Actions + OIDC) に載せる
-   - CI の環境変数・シークレットは **GitHub Environments** (develop / staging / prod) で持つ (ユーザー指定)。Environments とその変数・シークレットは Terraform の `github` モジュール (integrations/github provider) で管理する
-   - `wrangler.jsonc` の VPC Service の ID とホスト名の二重管理もここで片付ける
+   - CI の環境変数・シークレットは **GitHub Environments** で持つ (ユーザー指定)。Terraform の `modules/github` を `infra/terraform/github` から使い、**手元から apply する** (CI に自分のシークレットを書き換えさせない)。`GITHUB_TOKEN=$(gh auth token) terraform apply`
+     - Environment: `develop` (develop ブランチ)、`staging` (main)、`prod` (v* タグ、オーナーの承認が要る)、`plan` (PR の plan 用、ブランチ制限なし。フォークの PR にはシークレットが渡らない)
+     - シークレット: `AWS_ROLE_ARN` (アカウント ID が入るのでシークレット)、`CLOUDFLARE_API_TOKEN` (CI 専用。deploy は Edit 系、plan は Read + Tunnel だけ Edit)、`CLOUDFLARE_ACCOUNT_ID`、`TF_VAR_access_allowed_email` (develop / staging / plan)
+     - ルールセット: main / develop は削除と force push を禁止、`v*` タグの作成・更新・削除は admin だけ
+   - [x] `infra/terraform/shared/ci.tf`: GitHub の OIDC プロバイダ、plan ロール `short-link-ci-plan` (ReadOnlyAccess + tflock の読み書き、GitHub / bootstrap の state は読めない)、環境ごとの deploy ロール `short-link-ci-deploy-<env>` (PowerUserAccess を土台に絞る)
+     - 引き受け元は OIDC の sub で絞る。このリポジトリは sub に ID を使う設定 (`use_immutable_subject`) なので `repo:u-na-gi@72393752/short-link-service@1385659227:environment:<env>`。名前形式で書くと一致せず、どのロールも引き受けられない
+     - 権限昇格の防止: 環境のタスク用ロールに環境ごとの権限境界 (`short-link-<env>-ecs-task-boundary`: その環境の ECR pull・ログ・SSM だけ) を付け、deploy ロールは境界付きでしかロールを作れない。deploy ロール自身の名前は `short-link-<env>-*` に入れない (入れると自分に管理者権限を付けられる)
+     - deploy ロールは、他の環境の state (書き込み・読み取り)、GitHub / bootstrap の state、他の環境の SSM と ECS を Deny。EC2 (VPC) と Cloudflare のトークン (3 環境で共通) は環境ごとに分けていないので、そこは残るリスク
+   - [x] サブエージェントの検証で見つかった問題を直した: OIDC の sub の形式、上の権限昇格、deploy が CI を待たない (deploy.yml が ci.yml を呼んでから進む)、prod に main 以外のコミットを出せる (main の祖先か確かめる)、同じイメージの同時 push、prod のイメージが ECR のライフサイクルで消える (`release-<sha>` を足して別に数える)、公開ログでの伏せ字 (実行中に読んだトークン)、CI のローカル E2E のファイル権限、prod の承認を admin が飛ばせる
+   - [x] ワークフロー: `ci.yml` (gitleaks / actionlint / server / front / E2E シナリオの lint / terraform の fmt・validate・tflint / ローカル E2E)、`plan.yml` (PR で shared と 3 環境を plan、ログにだけ出す)、`deploy.yml` (イメージ → terraform apply → ecspresso → Worker → E2E。prod は main のイメージを使いビルドしない)。Action は SHA で固定、AWS のアカウント ID はログで伏せる
+   - [x] `wrangler.jsonc` の VPC Service の ID・ホスト名・Turnstile の有無を Terraform の output と突き合わせる (`src/front/scripts/check-wrangler-config.ts`、`make deploy-front` が deploy の前に流す)
+   - [ ] **ユーザーが CI 用の Cloudflare トークン 2 つを作り、`TF_VAR_ci_cloudflare_deploy_token` / `TF_VAR_ci_cloudflare_plan_token` を `infra/.envrc.local` に書くのを待っている**
+   - [ ] `infra/terraform/github` を apply、develop ブランチを作って CI を流す

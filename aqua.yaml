@@ -16,3 +16,6 @@ packages:
   - name: terraform-linters/tflint@v0.64.0
   - name: kayac/ecspresso@v2.8.6
   - name: aws/aws-cli@2.37.1
+  - name: gitleaks/gitleaks@v8.30.1
+  - name: rhysd/actionlint@v1.7.12
+  - name: koalaman/shellcheck@v0.11.0

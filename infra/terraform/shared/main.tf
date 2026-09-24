@@ -50,8 +50,21 @@ resource "aws_ecr_lifecycle_policy" "server" {
 
   policy = jsonencode({
     rules = [
+      # prod で使ったイメージ (deploy.yml が release-<sha> を足す) は、下の「新しい 30 個」に数えずに残す。
+      # ルールは優先度の順に当てはめられ、当てはまったイメージは後のルールで数えられない
       {
         rulePriority = 1
+        description  = "prod で使ったイメージは新しい 50 個まで残す"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["release-"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 50
+        }
+        action = { type = "expire" }
+      },
+      {
+        rulePriority = 2
         description  = "タグの無いイメージは 1 日で消す"
         selection = {
           tagStatus   = "untagged"
@@ -62,7 +75,7 @@ resource "aws_ecr_lifecycle_policy" "server" {
         action = { type = "expire" }
       },
       {
-        rulePriority = 2
+        rulePriority = 3
         description  = "タグ付きは新しい 30 個だけ残す"
         selection = {
           tagStatus   = "any"

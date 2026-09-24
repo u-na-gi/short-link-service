@@ -1,0 +1,140 @@
+# develop への push → develop、main への push → staging、v* のタグ → prod に deploy する。
+# どの環境に出すかは GitHub の Environment が決め、Environment 側でブランチ・タグと承認 (prod) を絞っている
+# (infra/terraform/github)。AWS のロールもその Environment からしか引き受けられない (infra/terraform/shared/ci.tf)。
+#
+# 流れ: CI (ci.yml) → イメージ (コミットの sha でタグ付け) → terraform apply → ecspresso deploy → Worker → E2E
+# prod は main に入っているコミットだけを、main で作った同じ sha のイメージで出す (ビルドし直さない)。
+name: deploy
+
+on:
+  push:
+    branches: [develop, main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  target:
+    name: 出し先を決める
+    runs-on: ubuntu-latest
+    outputs:
+      env: ${{ steps.env.outputs.env }}
+    steps:
+      - id: env
+        run: |
+          case "$GITHUB_REF" in
+            refs/heads/develop) echo "env=develop" >> "$GITHUB_OUTPUT" ;;
+            refs/heads/main)    echo "env=staging" >> "$GITHUB_OUTPUT" ;;
+            refs/tags/v*)       echo "env=prod"    >> "$GITHUB_OUTPUT" ;;
+            *) echo "unexpected ref: $GITHUB_REF"; exit 1 ;;
+          esac
+
+  deploy:
+    name: deploy (${{ needs.target.outputs.env }})
+    needs: [ci, target]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.target.outputs.env }}
+    permissions:
+      contents: read
+      id-token: write
+    # 同じ環境への deploy は 1 つずつ。途中で止めると state やタスクが中途半端になるので取り消さない
+    concurrency:
+      group: deploy-${{ needs.target.outputs.env }}
+      cancel-in-progress: false
+    env:
+      ENV: ${{ needs.target.outputs.env }}
+      IMAGE_TAG: ${{ github.sha }}
+      AQUA_GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # prod で「main に入っているコミットか」を確かめるのに履歴が要る
+          fetch-depth: 0
+      - uses: aquaproj/aqua-installer@96a9bc20066c5bf5e275b41019cfc165b25f4e2e # v4.0.5
+        with:
+          aqua_version: v2.63.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+        working-directory: src/front
+
+      - name: prod は main に入っているコミットだけ
+        if: env.ENV == 'prod'
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_SHA は main に入っていない。staging を通ったコミットにだけタグを切る"
+            exit 1
+          fi
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-1
+          role-duration-seconds: 7200
+          mask-aws-account-id: true
+
+      - name: イメージ (無ければビルドして push。prod はビルドしない)
+        run: |
+          terraform -chdir=infra/terraform/shared init -input=false >/dev/null
+          repo=$(terraform -chdir=infra/terraform/shared output -raw server_repository_url)
+          exists() {
+            aws ecr describe-images --repository-name short-link-service/server --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>"$RUNNER_TEMP/ecr.err" && return 0
+            # 無いこと以外のエラー (権限・スロットリング) は「無い」と取り違えずに止める
+            grep -q ImageNotFoundException "$RUNNER_TEMP/ecr.err" || { cat "$RUNNER_TEMP/ecr.err"; exit 1; }
+            return 1
+          }
+          if exists; then
+            echo "image $IMAGE_TAG already exists"
+            exit 0
+          fi
+          if [ "$ENV" = prod ]; then
+            echo "::error::prod は main で作ったイメージを使う。$IMAGE_TAG のイメージが無い (main への push の deploy が終わってからタグを切る)"
+            exit 1
+          fi
+          aws ecr get-login-password | docker login --username AWS --password-stdin "${repo%%/*}"
+          # 単一マニフェストにする (index だと実体がタグなしになり、ECR のライフサイクルで消える。Dockerfile.prod を参照)
+          docker build --provenance=false --sbom=false -f src/server/Dockerfile.prod -t "$repo:$IMAGE_TAG" src/server
+          # develop と main に同じコミットを同時に push すると、先に push された側と競合する (タグは上書きできない)
+          if ! docker push "$repo:$IMAGE_TAG"; then
+            exists || exit 1
+            echo "image $IMAGE_TAG was pushed by another run"
+          fi
+
+      - name: terraform apply
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TF_VAR_access_allowed_email: ${{ secrets.TF_VAR_access_allowed_email }}
+        run: |
+          terraform -chdir="infra/terraform/envs/$ENV" init -input=false
+          terraform -chdir="infra/terraform/envs/$ENV" apply -input=false -auto-approve -lock-timeout=5m
+
+      - name: ecspresso deploy (server)
+        run: ecspresso deploy --config infra/ecspresso/ecspresso.yml
+
+      # prod で使ったイメージに release-<sha> を足し、ECR のライフサイクル (新しい 30 個だけ残す) で消えないようにする
+      - name: prod のイメージを残す
+        if: env.ENV == 'prod'
+        run: |
+          manifest=$(aws ecr batch-get-image --repository-name short-link-service/server --image-ids imageTag="$IMAGE_TAG" --query 'images[0].imageManifest' --output text)
+          aws ecr put-image --repository-name short-link-service/server --image-tag "release-$IMAGE_TAG" --image-manifest "$manifest" >/dev/null 2>"$RUNNER_TEMP/put.err" \
+            || grep -q ImageAlreadyExistsException "$RUNNER_TEMP/put.err" \
+            || { cat "$RUNNER_TEMP/put.err"; exit 1; }
+
+      - name: front (Worker) を deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: make deploy-front ENV="$ENV"
+
+      # deploy 直後はエッジによって古い状態が見えるので、少し待ってから流す
+      - name: E2E
+        run: |
+          sleep 60
+          make e2e-remote ENV="$ENV"

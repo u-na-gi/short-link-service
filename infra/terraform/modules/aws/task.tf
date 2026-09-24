@@ -30,6 +30,10 @@ resource "aws_ssm_parameter" "tunnel_token" {
 }
 
 locals {
+  # 環境のロールに付ける権限境界 (infra/terraform/shared/ci.tf)。CI の deploy ロールはこの境界付きでしか
+  # ロールを作れないので、CI がロールに何を付けても、ECS のイメージ取得・ログ・その環境のシークレットより強くならない
+  task_role_boundary_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${local.name}-ecs-task-boundary"
+
   # ecs-tasks にロールを渡すとき、自分のアカウントの ECS からだけ引き受けさせる (confused deputy 対策)
   ecs_tasks_assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -47,8 +51,9 @@ locals {
 
 # ECS エージェントがイメージ取得・ログ送信・シークレット取得に使うロール
 resource "aws_iam_role" "task_execution" {
-  name               = "${local.name}-task-execution"
-  assume_role_policy = local.ecs_tasks_assume_role_policy
+  name                 = "${local.name}-task-execution"
+  assume_role_policy   = local.ecs_tasks_assume_role_policy
+  permissions_boundary = local.task_role_boundary_arn
 }
 
 resource "aws_iam_role_policy_attachment" "task_execution" {
@@ -75,6 +80,7 @@ resource "aws_iam_role_policy" "task_execution_secrets" {
 
 # アプリ自身のロール。今は AWS の API を呼ばないので権限を付けない
 resource "aws_iam_role" "task" {
-  name               = "${local.name}-task"
-  assume_role_policy = local.ecs_tasks_assume_role_policy
+  name                 = "${local.name}-task"
+  assume_role_policy   = local.ecs_tasks_assume_role_policy
+  permissions_boundary = local.task_role_boundary_arn
 }
