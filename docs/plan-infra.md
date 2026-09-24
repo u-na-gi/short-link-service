@@ -124,6 +124,11 @@ AWS サポートの解除を待たずに動かすため、ユーザーと相談�
      - Cloudflare のトークンの権限は、変えてから効くまで数分かかることがある (Access のサービストークン、Turnstile とも、直後は 403 だった)
      - 手元 (devcontainer) の DNS は Tailscale 経由らしく、作ったばかりのホスト名 (`s.u-na-gi.com`) が引けたり引けなかったりした。公開 DNS (1.1.1.1) では安定して引けたので、E2E の失敗が名前解決なら疑う
    - [ ] ブラウザでの確認 (ユーザー): staging / prod で短縮と復元ができ、Turnstile が通ること
-5. CI (GitHub Actions + OIDC) に載せる
+5. リポジトリの公開 (2026-09-24、ユーザー了承済み)
+   - [x] 会社や課題を特定できる記述を、履歴ごと `git filter-repo` で消した (課題文のメモ、例の URL と短縮コード)。コミットの作者は GitHub の noreply アドレスにした
+   - [x] 書き換えた履歴を新しい `u-na-gi/short-link-service` (Public) に push。元のリポジトリは `u-na-gi/short-link-service-private` (Private) に改名して残してある (手元の remote 名は `private`)
+   - [x] Actions: 外部の人の PR は承認してから動かす、ワークフローの既定の権限は読み取りだけ
+   - これからのコミットでも、会社名・課題文・メールアドレス・アカウント ID・トークンを入れない (CI に秘密情報の検出を入れる)
+6. CI (GitHub Actions + OIDC) に載せる
    - CI の環境変数・シークレットは **GitHub Environments** (develop / staging / prod) で持つ (ユーザー指定)。Environments とその変数・シークレットは Terraform の `github` モジュール (integrations/github provider) で管理する
    - `wrangler.jsonc` の VPC Service の ID とホスト名の二重管理もここで片付ける
