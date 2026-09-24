@@ -58,6 +58,7 @@ describe("toServerRequest", () => {
         cookie: "CF_Authorization=secret",
         "cf-access-jwt-assertion": "jwt",
         "x-forwarded-for": "203.0.113.1",
+        "x-turnstile-token": "token",
         "content-type": "application/json",
       },
       body: JSON.stringify({ url: "https://example.com/" }),
@@ -78,6 +79,7 @@ describe("toServerRequest", () => {
     assert.equal(req.headers.get("cookie"), null);
     assert.equal(req.headers.get("cf-access-jwt-assertion"), null);
     assert.equal(req.headers.get("x-forwarded-for"), null);
+    assert.equal(req.headers.get("x-turnstile-token"), null);
     assert.equal(req.headers.get("content-type"), "application/json");
     assert.equal(req.headers.get("x-forwarded-host"), "short-link-develop.example.workers.dev");
     assert.equal(req.headers.get("x-forwarded-proto"), "https");

@@ -27,7 +27,14 @@ export const SERVER_ORIGIN = "http://localhost:9000";
 // - cookie / cf-access-jwt-assertion: Play はセッションを持たず、Cloudflare Access の認証情報を渡す理由がない
 // - x-forwarded-for: Play は 127.0.0.1 (cloudflared) をプロキシとして信頼するので、利用者が送った値を
 //   そのまま渡すと remoteAddress を偽装できてしまう
-const DROPPED_HEADERS = ["cookie", "cf-access-jwt-assertion", "x-forwarded-for", "host"];
+// - x-turnstile-token: Worker で検証し終えたもの。Play には関係ない
+const DROPPED_HEADERS = [
+  "cookie",
+  "cf-access-jwt-assertion",
+  "x-forwarded-for",
+  "x-turnstile-token",
+  "host",
+];
 
 // Play に渡すリクエストを作る。
 // - 元のホストとスキームは X-Forwarded-* で渡す (アクセスログの host は X-Forwarded-Host を優先する)

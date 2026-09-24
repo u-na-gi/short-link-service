@@ -1,5 +1,6 @@
-import { useId, useRef, useState, type ClipboardEvent, type FormEvent } from "react";
+import { useId, useRef, useState, type ClipboardEvent, type SubmitEvent } from "react";
 import { resolveShortUrl, type ShortLink } from "./api.ts";
+import { useTurnstile } from "./turnstile.ts";
 import { describeUrlProblem, findUrlProblem } from "./url.ts";
 
 type State =
@@ -17,6 +18,7 @@ export function ResolveForm() {
   const latest = useRef(0);
   const inputId = useId();
   const errorId = useId();
+  const turnstile = useTurnstile("resolve");
 
   async function submit(raw: string) {
     const shortUrl = raw.trim();
@@ -33,14 +35,14 @@ export function ResolveForm() {
     const id = ++latest.current;
     setState({ kind: "loading" });
 
-    const result = await resolveShortUrl(shortUrl);
+    const result = await resolveShortUrl(shortUrl, await turnstile.getToken());
     if (id !== latest.current) return;
     setState(
       result.ok ? { kind: "done", link: result.link } : { kind: "error", message: result.message },
     );
   }
 
-  function onSubmit(e: FormEvent<HTMLFormElement>) {
+  function onSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     void submit(value);
   }
@@ -93,6 +95,7 @@ export function ResolveForm() {
           {loading ? "確認中…" : "元に戻す"}
         </button>
       </form>
+      <div ref={turnstile.containerRef} className="turnstile" />
 
       <div className="outcome" aria-live="polite">
         {state.kind === "error" && (

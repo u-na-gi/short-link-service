@@ -228,3 +228,13 @@ input {
     transition: none;
   }
 }
+
+/* Turnstile のチェック。Cloudflare が必要と判断したときだけ中身が入る */
+.turnstile:empty {
+  display: none;
+}
+
+.turnstile {
+  padding-inline: 20px;
+  margin-top: 12px;
+}
