@@ -1,6 +1,8 @@
 desc: 短縮URLから元URLへ戻す (302 リダイレクトと復元 API)
 labels:
   - links
+# Turnstile をかけた環境 (staging / prod) ではトークンを取れないので流さない。turnstile.yml が 403 を確かめる
+if: env.E2E_TURNSTILE != 'on'
 runners:
   req:
     endpoint: ${E2E_BASE_URL:-http://localhost:9000}

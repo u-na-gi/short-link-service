@@ -1,4 +1,4 @@
-.PHONY: up down logs logs-server e2e e2e-remote
+.PHONY: up down logs logs-server e2e e2e-remote deploy-front
 
 # 開発用の compose (compose.yaml)。.env は cp .env.example .env で用意する
 
@@ -31,9 +31,12 @@ e2e:
 	$(E2E_COMPOSE) down; \
 	exit $$code
 
-# デプロイ済みの環境 (develop / staging) に同じシナリオを流す。例: make e2e-remote ENV=develop
-# 向き先は Terraform の output (public_base_url)、Cloudflare Access を通るサービストークンは SSM から読む。
-# トークンはコマンドラインに載せず、環境変数で runn に渡す。
+# デプロイ済みの環境に同じシナリオを流す。例: make e2e-remote ENV=develop
+# 向き先は Terraform の output (public_base_url)。
+# - Cloudflare Access をかけた環境 (develop / staging) は、サービストークンを SSM から読んでヘッダで付ける。
+#   トークンはコマンドラインに載せず、環境変数で runn に渡す。
+# - Turnstile をかけた環境 (staging / prod) は E2E_TURNSTILE=on で、短縮・復元のシナリオを飛ばし、
+#   トークンの無いリクエストが 403 で断られることを確かめる (turnstile.yml)。
 # Worker の回数制限 (API は IP ごとに 1 分 20 回) があるので、続けて流すときは 1 分空ける。
 # --debug / --debug-on-failure はリクエストヘッダ (トークンのシークレット) をそのまま出すので、ここでは付けない。
 # 手元で調べるときだけ E2E_ARGS=--debug で足し、出力を CI のログなどに残さない。
@@ -46,16 +49,40 @@ export AWS_PROFILE ?= short-link-develop
 endif
 
 e2e-remote:
-	@base=$$(terraform -chdir=infra/terraform/envs/$(ENV) output -raw public_base_url) || exit 1; \
-	param() { aws ssm get-parameter --with-decryption --name "/short-link-$(ENV)/e2e/$$1" --query Parameter.Value --output text; }; \
-	CF_ACCESS_CLIENT_ID=$$(param access-client-id) || exit 1; \
-	CF_ACCESS_CLIENT_SECRET=$$(param access-client-secret) || exit 1; \
+	@outputs=$$(terraform -chdir=infra/terraform/envs/$(ENV) output -json) || exit 1; \
+	out() { printf '%s' "$$outputs" | jq -r --arg k "$$1" '.[$$k].value // empty'; }; \
+	base=$$(out public_base_url); \
+	E2E_TURNSTILE=$$(if [ -n "$$(out turnstile_site_key)" ]; then echo on; fi); \
+	CF_ACCESS_CLIENT_ID=; CF_ACCESS_CLIENT_SECRET=; \
+	if [ "$$(out access_enabled)" = true ]; then \
+		param() { aws ssm get-parameter --with-decryption --name "/short-link-$(ENV)/e2e/$$1" --query Parameter.Value --output text; }; \
+		CF_ACCESS_CLIENT_ID=$$(param access-client-id) || exit 1; \
+		CF_ACCESS_CLIENT_SECRET=$$(param access-client-secret) || exit 1; \
+	fi; \
 	export CF_ACCESS_CLIENT_ID CF_ACCESS_CLIENT_SECRET; \
-	echo "E2E -> $$base"; \
+	echo "E2E -> $$base (turnstile: $${E2E_TURNSTILE:-off})"; \
 	docker run --rm \
 		-e E2E_BASE_URL=$$base \
 		-e E2E_SELF_URL=$$base/abcd1234 \
 		-e E2E_UNKNOWN_SHORT_URL=$$base/zzzzzzzz \
+		-e E2E_TURNSTILE=$$E2E_TURNSTILE \
 		-e CF_ACCESS_CLIENT_ID -e CF_ACCESS_CLIENT_SECRET \
 		-v $${LOCAL_WORKSPACE_FOLDER:-.}/tests/scenarios:/scenarios:ro \
 		$(RUNN_IMAGE) run "/scenarios/*.yml" --verbose $(E2E_ARGS)
+
+# front (Cloudflare Worker) を ENV に deploy する。例: make deploy-front ENV=staging
+# Turnstile を使う環境 (staging / prod) では、Terraform の output からサイトキーをビルドに、シークレットを
+# Worker の secret に渡す。シークレットは一時ファイル (600) に書いて --secrets-file で同じバージョンに載せ、
+# 「Turnstile は on なのにシークレットが無い」瞬間を作らない。コマンドラインには載せない。
+# Cloudflare の認証情報は infra/.envrc.local (CI では環境変数) から読む。
+# 値が null の output (Turnstile を使わない develop) は state に載らないので、無ければ空として扱う。
+deploy-front:
+	@set -a; [ -f infra/.envrc.local ] && . ./infra/.envrc.local; set +a; \
+	outputs=$$(terraform -chdir=infra/terraform/envs/$(ENV) output -json) || exit 1; \
+	out() { printf '%s' "$$outputs" | jq -r --arg k "$$1" '.[$$k].value // empty'; }; \
+	site=$$(out turnstile_site_key); \
+	secret=$$(out turnstile_secret_key); \
+	secrets=$$(mktemp) || exit 1; trap 'rm -f "$$secrets"' EXIT; chmod 600 "$$secrets"; \
+	if [ -n "$$secret" ]; then printf 'TURNSTILE_SECRET_KEY=%s\n' "$$secret" > "$$secrets"; fi; \
+	cd src/front && VITE_TURNSTILE_SITE_KEY=$$site bun run build && \
+	bunx wrangler deploy --env $(ENV) $$(if [ -s "$$secrets" ]; then echo --secrets-file "$$secrets"; fi)

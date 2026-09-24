@@ -2,6 +2,8 @@ desc: 短縮できない URL を 400 で弾く
 labels:
   - links
   - validation
+# Turnstile をかけた環境 (staging / prod) ではトークンを取れないので流さない。turnstile.yml が 403 を確かめる
+if: env.E2E_TURNSTILE != 'on'
 runners:
   req: ${E2E_BASE_URL:-http://localhost:9000}
 vars:
