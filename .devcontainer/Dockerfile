@@ -11,6 +11,8 @@ ARG RUNN_VERSION=1.11.0
 # metals-mcp (Metals の MCP サーバ) と、それを入れる coursier の版
 ARG METALS_VERSION=1.6.9
 ARG COURSIER_VERSION=2.1.25
+# aqua (インフラ用 CLI の版管理) の版。管理する CLI の版は /app/aqua.yaml が決める
+ARG AQUA_VERSION=2.63.0
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=en_US.UTF-8 \
@@ -25,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git openssh-client \
         sudo less procps locales vim unzip jq \
         make \
+        direnv \
         openjdk-21-jdk-headless \
         openjdk-21-source \
     && sed -i 's/# en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen \
@@ -66,6 +69,14 @@ RUN arch="$(dpkg --print-architecture)" \
         | tar xzf - -C /usr/local/bin runn \
     && chmod 0755 /usr/local/bin/runn
 
+# --- aqua ---------------------------------------------------------------------
+# terraform / tflint / ecspresso / aws cli は aqua.yaml で版を固定して aqua 経由で入れる。
+# aqua の bin にあるのは aqua 本体を呼ぶリンクなので、aqua 本体も PATH に要る
+RUN arch="$(dpkg --print-architecture)" \
+    && curl -fsSL "https://github.com/aquaproj/aqua/releases/download/v${AQUA_VERSION}/aqua_linux_${arch}.tar.gz" \
+        | tar xzf - -C /usr/local/bin aqua \
+    && chmod 0755 /usr/local/bin/aqua
+
 # --- Node.js (LTS) ------------------------------------------------------------
 # setup_lts.x は NodeSource 側でその時点の Active LTS 系に解決される
 RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
@@ -87,10 +98,11 @@ RUN mkdir -p \
         /home/${USERNAME}/.sbt \
         /home/${USERNAME}/.ivy2 \
         /home/${USERNAME}/.cache/coursier \
-        /home/${USERNAME}/.claude
+        /home/${USERNAME}/.claude \
+        /home/${USERNAME}/.local/share/aquaproj-aqua
 
 
-RUN mkdir -p /home/${USERNAME}/.config/gh
+RUN mkdir -p /home/${USERNAME}/.config/gh /home/${USERNAME}/.aws
 
 # --- Claude Code -------------------------------------------------------------------
 RUN curl -fsSL https://claude.ai/install.sh | bash
@@ -98,6 +110,11 @@ ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
 
 RUN printf '\n# custom aliases\nalias ccl='\''claude --dangerously-skip-permissions'\''\n' \
         >> /home/${USERNAME}/.bashrc
+
+# --- aqua の PATH と direnv の hook --------------------------------------------
+ENV AQUA_ROOT_DIR="/home/${USERNAME}/.local/share/aquaproj-aqua"
+ENV PATH="${AQUA_ROOT_DIR}/bin:${PATH}"
+RUN printf '\n# direnv\neval "$(direnv hook bash)"\n' >> /home/${USERNAME}/.bashrc
 
 # --- bun ----------------------------------------------------------------------
 # 公式インストーラ。~/.bun/bin に入る
