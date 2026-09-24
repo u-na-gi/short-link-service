@@ -2,7 +2,8 @@
 # どの環境に出すかは GitHub の Environment が決め、Environment 側でブランチ・タグと承認 (prod) を絞っている
 # (infra/terraform/github)。AWS のロールもその Environment からしか引き受けられない (infra/terraform/shared/ci.tf)。
 #
-# 流れ: CI (ci.yml) → イメージ (コミットの sha でタグ付け) → terraform apply → ecspresso deploy → Worker → E2E
+# 流れ: CI (ci.yml) → イメージ (コミットの sha でタグ付け) → terraform apply → ecspresso deploy → Worker
+# (デプロイ済みの環境への E2E は手元から make e2e-remote で流す。理由は最後のステップのコメント)
 # prod は main に入っているコミットだけを、main で作った同じ sha のイメージで出す (ビルドし直さない)。
 name: deploy
 
@@ -133,8 +134,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: make deploy-front ENV="$ENV"
 
-      # deploy 直後はエッジによって古い状態が見えるので、少し待ってから流す
-      - name: E2E
-        run: |
-          sleep 60
-          make e2e-remote ENV="$ENV"
+      # デプロイ済みの環境への E2E (make e2e-remote) は CI では流さず、手元から流す。
+      # GitHub のランナーはデータセンターの IP から来るので、u-na-gi.com の Bot Fight Mode に Access より手前で
+      # 止められる (403、cf-mitigated: challenge)。Free プランの Bot Fight Mode は例外を作れない。
+      # server が動いていることは、ecspresso がサービスの安定を待つことと、タスクのヘルスチェックで見ている

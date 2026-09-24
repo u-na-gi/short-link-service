@@ -142,4 +142,8 @@ AWS サポートの解除を待たずに動かすため、ユーザーと相談�
    - [x] ワークフロー: `ci.yml` (gitleaks / actionlint / server / front / E2E シナリオの lint / terraform の fmt・validate・tflint / ローカル E2E)、`plan.yml` (PR で shared と 3 環境を plan、ログにだけ出す)、`deploy.yml` (イメージ → terraform apply → ecspresso → Worker → E2E。prod は main のイメージを使いビルドしない)。Action は SHA で固定、AWS のアカウント ID はログで伏せる
    - [x] `wrangler.jsonc` の VPC Service の ID・ホスト名・Turnstile の有無を Terraform の output と突き合わせる (`src/front/scripts/check-wrangler-config.ts`、`make deploy-front` が deploy の前に流す)
    - [ ] **ユーザーが CI 用の Cloudflare トークン 2 つを作り、`TF_VAR_ci_cloudflare_deploy_token` / `TF_VAR_ci_cloudflare_plan_token` を `infra/.envrc.local` に書くのを待っている**
-   - [ ] `infra/terraform/github` を apply、develop ブランチを作って CI を流す
+   - [x] `infra/terraform/github` を手元から apply (Environment 4 つ、シークレット、ルールセット 2 つ)
+   - [x] develop ブランチを作り、CI と develop への deploy が通る
+     - `tests` の oxlint は lint する TypeScript が無く失敗するので、CI では流さない
+     - **deploy 後の E2E は CI では流さない (ユーザー判断)**。GitHub のランナー (データセンターの IP) は u-na-gi.com の Bot Fight Mode に Access より手前で止められる (403、`cf-mitigated: challenge`)。Free プランの Bot Fight Mode は例外を作れない。E2E は手元から `make e2e-remote ENV=...` で流す (最初に preflight でステータスと Cloudflare の判定を出す)
+   - [ ] main への反映 (staging)、`v*` タグでの prod (承認つき) を CI で通す
