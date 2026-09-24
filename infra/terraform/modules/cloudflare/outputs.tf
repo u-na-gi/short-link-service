@@ -17,3 +17,19 @@ output "e2e_access_client" {
   } : null
   sensitive = true
 }
+
+output "turnstile_site_key" {
+  description = "front のビルド時に VITE_TURNSTILE_SITE_KEY で渡す。Turnstile をかけない環境では null"
+  value       = var.turnstile_enabled ? cloudflare_turnstile_widget.site[0].sitekey : null
+}
+
+output "turnstile_secret_key" {
+  description = "Worker の secret (TURNSTILE_SECRET_KEY) に入れる。Turnstile をかけない環境では null"
+  value       = var.turnstile_enabled ? cloudflare_turnstile_widget.site[0].secret : null
+  sensitive   = true
+}
+
+output "access_enabled" {
+  description = "Cloudflare Access をかけているか。make e2e-remote がサービストークンを読むかどうかに使う"
+  value       = local.access_enabled
+}

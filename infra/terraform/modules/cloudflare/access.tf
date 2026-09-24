@@ -6,7 +6,8 @@
 # トークンは output で返し、modules/aws が SSM に入れる。
 
 locals {
-  access_enabled = var.access_allowed_email != null
+  # メールアドレス自体は sensitive なので、null かどうかだけを取り出す (output や count に使う)
+  access_enabled = nonsensitive(var.access_allowed_email != null)
 }
 
 resource "cloudflare_zero_trust_access_policy" "owner" {

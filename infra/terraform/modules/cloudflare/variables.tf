@@ -20,3 +20,9 @@ variable "access_allowed_email" {
   default     = null
   sensitive   = true
 }
+
+variable "turnstile_enabled" {
+  description = "短縮と復元に Turnstile をかけるか (staging / prod は true、develop は false)"
+  type        = bool
+  default     = false
+}
