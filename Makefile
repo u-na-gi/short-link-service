@@ -38,6 +38,8 @@ e2e:
 # - Turnstile をかけた環境 (staging / prod) は E2E_TURNSTILE=on で、短縮・復元のシナリオを飛ばし、
 #   トークンの無いリクエストが 403 で断られることを確かめる (turnstile.yml)。
 # Worker の回数制限 (API は IP ごとに 1 分 20 回) があるので、続けて流すときは 1 分空ける。
+# 最初にヘルスチェックを 1 回叩き、ステータスと Cloudflare の判定 (Access のログインへの 302、cf-mitigated など) を出す。
+# シナリオが全部落ちたときに、アプリの問題か入口 (Access / ボット対策) の問題かを切り分けるため。
 # --debug / --debug-on-failure はリクエストヘッダ (トークンのシークレット) をそのまま出すので、ここでは付けない。
 # 手元で調べるときだけ E2E_ARGS=--debug で足し、出力を CI のログなどに残さない。
 ENV ?= develop
@@ -66,6 +68,8 @@ e2e-remote:
 	fi; \
 	export CF_ACCESS_CLIENT_ID CF_ACCESS_CLIENT_SECRET; \
 	echo "E2E -> $$base (turnstile: $${E2E_TURNSTILE:-off})"; \
+	echo "preflight: $$(curl -sS -o /dev/null -D - -H "CF-Access-Client-Id: $$CF_ACCESS_CLIENT_ID" -H "CF-Access-Client-Secret: $$CF_ACCESS_CLIENT_SECRET" "$$base/api/v1/health" \
+		| grep -i -E '^(HTTP/|location:|cf-mitigated:|server:|content-type:)' | tr -d '\r' | tr '\n' ' ')"; \
 	docker run --rm \
 		-e E2E_BASE_URL=$$base \
 		-e E2E_SELF_URL=$$base/abcd1234 \
