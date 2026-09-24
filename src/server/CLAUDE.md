@@ -35,7 +35,7 @@ make e2e   # E2E 専用の compose で起動し、runn のシナリオを front 
 - `domain/` — Play に依存しない中核。
   - `Url` は検証済み URL の値オブジェクト。コンストラクタは private で `Url.from(raw): Either[Url.Error, Url]` 経由でのみ生成する。okhttp の `HttpUrl` でパース・正規化 (punycode 化、ホスト小文字化) し、http/https 以外のスキーム・認証情報付き URL・2048 文字超を拒否する。
   - `ShortLinkRepository` / `ShortLinkService` は trait。実装は外側に置く。`ShortLinkService.issue(url)` は一意なコードを振って保存までを担う。`saveIfAbsent` はコード重複 (`CodeTaken`)、URL 登録済み (`UrlExists`)、件数の上限 (`Full`) を判定と保存を不可分にして返す。URL が登録済みなら上限に関係なく既存のリンクを返す。
-  - `PublicBaseUrl` は利用者に見せる自サービスの公開 URL (スキーム + ホスト [+ ポート])。短縮 URL は Host ヘッダではなく必ずこれから組み立てる (CloudFront 越しだと Host が origin 側になり、偽装もできるため)。
+  - `PublicBaseUrl` は利用者に見せる自サービスの公開 URL (スキーム + ホスト [+ ポート])。短縮 URL は Host ヘッダではなく必ずこれから組み立てる (本番は Cloudflare Worker と Tunnel 越しで Host が `localhost:9000` になり、偽装もできるため)。
   - `ServiceHost` は自サービスのホスト名で、`PublicBaseUrl` から導く。自己参照 URL (リダイレクトループ) の拒否に使う。
   - `PublicBaseUrl.codeOf(raw)` は自サービスの短縮 URL からコードを取り出す。ホスト名だけで判定し (`ServiceHost` と同じ基準)、パスは英数 8 文字の 1 階層だけ。クエリ・フラグメントは無視する。
 - `usecase/` — 業務操作。`CreateShortLink.execute(rawUrl)` は生文字列を受け取り VO 変換まで内側で行い、`Future[Either[CreateShortLinkError, ShortLink]]` を返す。エラーは enum で表現し、例外は使わない。
@@ -68,7 +68,7 @@ usecase のテストは DI コンテナを使わず `new` で組み立て、`Def
 
 ## 運用の前提
 
-リンクはインメモリなので、常に 1 プロセスで動かす前提。複数台に振り分けると、作ったリンクが別の台で 404 になり、同じ URL に別コードが返る。本番は ALB なしの ECS on EC2 1 台 (デプロイも新旧を並べない)。スケールするときは `ShortLinkRepository` を共有ストア (DynamoDB など) の実装に差し替える。
+リンクはインメモリなので、常に 1 プロセスで動かす前提。複数台に振り分けると、作ったリンクが別の台で 404 になり、同じ URL に別コードが返る。本番は ECS on Fargate の 1 タスク (デプロイも新旧を並べない。構成はルートの `docs/production-architecture.md`)。スケールするときは `ShortLinkRepository` を共有ストア (DynamoDB など) の実装に差し替える。
 
 ## 規約
 
