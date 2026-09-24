@@ -93,6 +93,11 @@ export function App() {
 
   return (
     <main className="page">
+      {/* 公開はしているが、あとで消す前提のサービスなので、使う前に分かるよう最初に出す */}
+      <p className="notice" role="note">
+        このサービスは試験的に公開しているもので、予告なく終了します。作った短縮 URL
+        もいつ消えるか分かりません。大切なリンクには使わないでください。
+      </p>
       <form className="search" onSubmit={onSubmit} noValidate aria-busy={loading}>
         <label className="visually-hidden" htmlFor="url">
           短くしたい URL
