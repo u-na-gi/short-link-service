@@ -1,10 +1,10 @@
-# GitHub のリポジトリ設定: CI の Environment (develop / staging / prod / plan) と、ブランチ・タグのルール。
+# GitHub repository settings: CI Environments (develop / staging / prod / plan) and branch/tag rules.
 #
-# CI に自分のシークレットを書き換えさせないよう、これは CI ではなく手元から apply する:
+# So that CI cannot rewrite its own secrets, this is applied locally, not from CI:
 #
 #   GITHUB_TOKEN=$(gh auth token) terraform apply
 #
-# シークレットの値 (CI 用の Cloudflare トークンなど) は infra/.envrc.local の TF_VAR_* から渡す。
+# Secret values (such as the Cloudflare tokens for CI) are passed via TF_VAR_* in infra/.envrc.local.
 
 terraform {
   required_version = ">= 1.16"
@@ -35,24 +35,24 @@ variable "cloudflare_account_id" {
 }
 
 variable "access_allowed_email" {
-  description = "develop / staging の Cloudflare Access で許可するメールアドレス (CI の terraform apply / plan が使う)"
+  description = "Email address allowed by Cloudflare Access in develop / staging (used by terraform apply / plan in CI)"
   type        = string
   sensitive   = true
 }
 
 variable "ci_cloudflare_deploy_token" {
-  description = "CI の apply / deploy 用の Cloudflare API トークン (Edit 系)"
+  description = "Cloudflare API token for apply / deploy in CI (Edit permissions)"
   type        = string
   sensitive   = true
 }
 
 variable "ci_cloudflare_plan_token" {
-  description = "PR の plan 用の Cloudflare API トークン (Read だけ)"
+  description = "Cloudflare API token for plan on PRs (Read only)"
   type        = string
   sensitive   = true
 }
 
-# CI のロール (infra/terraform/shared/ci.tf)
+# CI roles (infra/terraform/shared/ci.tf)
 data "terraform_remote_state" "shared" {
   backend = "s3"
   config = {
@@ -69,7 +69,7 @@ data "github_user" "owner" {
 locals {
   repository = "short-link-service"
 
-  # ロールの ARN にはアカウント ID が入るので、変数ではなくシークレットにしてログで伏せる
+  # The role ARN contains the account ID, so make it a secret instead of a variable to mask it in logs
   common_secrets = {
     CLOUDFLARE_ACCOUNT_ID = var.cloudflare_account_id
   }
@@ -77,7 +77,7 @@ locals {
   deploy_envs = {
     develop = { branches = ["develop"], tags = [], reviewers = [], access = true }
     staging = { branches = ["main"], tags = [], reviewers = [], access = true }
-    # 本番はタグ (v*) からだけ、オーナーの承認を待ってから
+    # Production only from tags (v*), after waiting for owner approval
     prod = { branches = [], tags = ["v*"], reviewers = [tonumber(data.github_user.owner.id)], access = false }
   }
 }
@@ -102,8 +102,8 @@ module "deploy_environment" {
   )
 }
 
-# PR の terraform plan 用。フォークからの PR にはシークレットが渡らない (GitHub の仕様) ので、
-# ブランチは制限しない。ロールは読み取りだけ、Cloudflare のトークンも Read だけ
+# For terraform plan on PRs. PRs from forks do not get secrets (GitHub behavior), so
+# branches are not restricted. The role is read-only and the Cloudflare token is Read only too
 module "plan_environment" {
   source = "../modules/github"
 
@@ -117,7 +117,7 @@ module "plan_environment" {
   })
 }
 
-# main / develop は消させない・履歴を書き換えさせない。オーナー (admin) は例外
+# main / develop cannot be deleted or have history rewritten. The owner (admin) is exempt
 resource "github_repository_ruleset" "branches" {
   name        = "protect-deploy-branches"
   repository  = local.repository
@@ -132,7 +132,7 @@ resource "github_repository_ruleset" "branches" {
   }
 
   bypass_actors {
-    actor_id    = 5 # リポジトリの admin ロール
+    actor_id    = 5 # repository admin role
     actor_type  = "RepositoryRole"
     bypass_mode = "always"
   }
@@ -143,7 +143,7 @@ resource "github_repository_ruleset" "branches" {
   }
 }
 
-# 本番リリースのタグ (v*) を作れる・動かせる・消せるのはオーナー (admin) だけ
+# Only the owner (admin) can create, move, or delete production release tags (v*)
 resource "github_repository_ruleset" "release_tags" {
   name        = "protect-release-tags"
   repository  = local.repository

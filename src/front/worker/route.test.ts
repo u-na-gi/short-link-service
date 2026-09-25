@@ -10,29 +10,29 @@ import {
 } from "./route.ts";
 
 describe("limitTargetOf", () => {
-  test("API は api として Play に渡す", () => {
+  test("passes the API to Play as api", () => {
     assert.equal(limitTargetOf("/api/v1/links"), "api");
     assert.equal(limitTargetOf("/api/v1/links/resolve"), "api");
   });
 
-  test("英数 8 文字の 1 階層は短縮 URL (redirect) として Play に渡す", () => {
+  test("passes a single segment of 8 alphanumeric chars to Play as a short URL (redirect)", () => {
     assert.equal(limitTargetOf("/Xk3pR8vN"), "redirect");
     assert.equal(limitTargetOf("/abcd1234"), "redirect");
   });
 
-  test("それ以外は静的アセット", () => {
+  test("treats everything else as static assets", () => {
     assert.equal(limitTargetOf("/"), null);
-    assert.equal(limitTargetOf("/index.html"), null); // 記号を含む
+    assert.equal(limitTargetOf("/index.html"), null); // contains a symbol
     assert.equal(limitTargetOf("/assets/index-abc.js"), null);
-    assert.equal(limitTargetOf("/abcd123"), null); // 7 文字
-    assert.equal(limitTargetOf("/abcd12345"), null); // 9 文字
-    assert.equal(limitTargetOf("/abcd1234/x"), null); // 2 階層
-    assert.equal(limitTargetOf("/api"), null); // /api/ で始まらない
+    assert.equal(limitTargetOf("/abcd123"), null); // 7 chars
+    assert.equal(limitTargetOf("/abcd12345"), null); // 9 chars
+    assert.equal(limitTargetOf("/abcd1234/x"), null); // 2 segments
+    assert.equal(limitTargetOf("/api"), null); // does not start with /api/
   });
 });
 
 describe("clientKey", () => {
-  test("Cloudflare が付ける接続元 IP を使い、X-Forwarded-For は見ない", () => {
+  test("uses the client IP added by Cloudflare and ignores X-Forwarded-For", () => {
     const req = new Request("https://example.com/", {
       headers: { "cf-connecting-ip": "198.51.100.7", "x-forwarded-for": "203.0.113.1" },
     });
@@ -41,7 +41,7 @@ describe("clientKey", () => {
 });
 
 describe("rateLimited", () => {
-  test("API のエラーと同じ形の 429 を返す", async () => {
+  test("returns a 429 in the same shape as API errors", async () => {
     const res = rateLimited();
     assert.equal(res.status, 429);
     assert.equal(res.headers.get("retry-after"), "60");
@@ -50,7 +50,7 @@ describe("rateLimited", () => {
 });
 
 describe("toServerRequest", () => {
-  // body はストリームで一度しか読めないので、テストごとに作る
+  // The body is a stream that can be read only once, so build it per test
   const original = () =>
     new Request("https://short-link-develop.example.workers.dev/api/v1/links?x=1", {
       method: "POST",
@@ -64,17 +64,17 @@ describe("toServerRequest", () => {
       body: JSON.stringify({ url: "https://example.com/" }),
     });
 
-  test("パスとクエリを保って Play の宛先に向ける", () => {
+  test("points to the Play address, keeping the path and query", () => {
     assert.equal(toServerRequest(original()).url, `${SERVER_ORIGIN}/api/v1/links?x=1`);
   });
 
-  test("メソッドと body をそのまま渡す", async () => {
+  test("passes the method and body as is", async () => {
     const req = toServerRequest(original());
     assert.equal(req.method, "POST");
     assert.equal(await req.text(), JSON.stringify({ url: "https://example.com/" }));
   });
 
-  test("認証情報と利用者の X-Forwarded-For を落とし、元のホストとスキームを X-Forwarded-* で渡す", () => {
+  test("drops credentials and the user's X-Forwarded-For, and passes the original host and scheme in X-Forwarded-*", () => {
     const req = toServerRequest(original());
     assert.equal(req.headers.get("cookie"), null);
     assert.equal(req.headers.get("cf-access-jwt-assertion"), null);
@@ -85,13 +85,13 @@ describe("toServerRequest", () => {
     assert.equal(req.headers.get("x-forwarded-proto"), "https");
   });
 
-  test("リダイレクトは追わない (短縮 URL の 302 をそのまま返す)", () => {
+  test("does not follow redirects (returns the short URL's 302 as is)", () => {
     assert.equal(toServerRequest(original()).redirect, "manual");
   });
 });
 
 describe("serverUnavailable", () => {
-  test("API のエラーと同じ形の 502 を返す", async () => {
+  test("returns a 502 in the same shape as API errors", async () => {
     const res = serverUnavailable();
     assert.equal(res.status, 502);
     assert.deepEqual(await res.json(), { error: "server_unavailable" });

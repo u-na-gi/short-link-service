@@ -5,7 +5,7 @@ import org.scalatestplus.play.guice._
 import play.api.test._
 import play.api.test.Helpers._
 
-/** JSON API 専用になったので、HTML ではなく JSON を返すことを検証する。 */
+/** The app is now JSON API only, so check that it returns JSON, not HTML. */
 class HomeControllerSpec extends PlaySpec with GuiceOneAppPerTest with Injecting {
 
   "HomeController GET" should {
@@ -28,7 +28,7 @@ class HomeControllerSpec extends PlaySpec with GuiceOneAppPerTest with Injecting
       (contentAsJson(home) \ "status").as[String] mustBe "ok"
     }
 
-    "フロント経由用の /api/v1/health でも ok を返す" in {
+    "return ok on /api/v1/health, used through the front end" in {
       val health = route(app, FakeRequest(GET, "/api/v1/health")).get
 
       status(health) mustBe OK

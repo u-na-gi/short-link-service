@@ -1,15 +1,16 @@
-# PR で terraform plan を流す。読み取りだけのロール (plan) と、Read 中心の Cloudflare トークンを使う。
-# フォークからの PR にはシークレットが渡らないので、このリポジトリのブランチからの PR だけ流す。
-# plan の出力はログにだけ出す (公開リポジトリなので PR にはコメントしない。アカウント ID は伏せる)。
-# infra/terraform/github は GitHub の管理権限が要るので、CI では扱わない (手元から apply する)。
+# Run terraform plan on PRs. Uses a read-only role (plan) and a mostly-Read Cloudflare token.
+# PRs from forks do not get secrets, so run only for PRs from branches in this repository.
+# Plan output goes only to the logs (public repository, so no PR comment. Account IDs are masked).
+# infra/terraform/github needs GitHub admin permissions, so CI does not handle it (apply it locally).
 name: plan
 
 on:
   pull_request:
     branches: [develop, main]
-    # Markdown だけの PR では流さない (インフラの差分が出ない)
+    # Skip PRs that only change Markdown and the devcontainer (no infra diff)
     paths-ignore:
       - "**.md"
+      - ".devcontainer/**"
 
 permissions:
   contents: read

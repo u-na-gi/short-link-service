@@ -8,16 +8,19 @@ enum CreateShortLinkError {
   case InvalidUrl(cause: Url.Error)
   case SelfReference(host: String)
 
-  /** 採番を上限回数やり直しても空きコードが取れなかった。 */
+  /** No free code was found even after retrying the maximum number of times. */
   case CodeExhausted
 
-  /** 保存できる件数の上限に達している。登録済みの URL なら上限に関係なく既存のリンクを返す。 */
+  /** The limit on the number of stored links has been reached. A registered URL gets its existing
+    * link regardless of the limit.
+    */
   case StorageFull
 }
 
-/** 「URL を受け取って短縮リンクを発行し、保存する」という業務操作。
+/** Business operation: "take a URL, issue a short link, and save it".
   *
-  * 生の文字列を受け取り VO への変換も内側で行うので、コントローラは HTTP の関心事だけを持てばよい。
+  * It takes the raw string and converts it to a value object inside, so the controller only handles
+  * HTTP concerns.
   */
 @Singleton
 class CreateShortLink @Inject() (
@@ -30,11 +33,11 @@ class CreateShortLink @Inject() (
     Url.from(rawUrl) match {
       case Left(error) =>
         Future.successful(Left(CreateShortLinkError.InvalidUrl(error)))
-      // 自サービス宛の短縮を許すとリダイレクトが無限に連鎖しうる。
+      // Allowing short links to this service itself could chain redirects forever.
       case Right(url) if serviceHost.matches(url.host) =>
         Future.successful(Left(CreateShortLinkError.SelfReference(url.host)))
       case Right(url) =>
-        // 登録済みなら乱数を引かずにそのまま返す。
+        // If already registered, return it as-is without generating a random code.
         repository.findByUrl(url).flatMap {
           case Some(existing) => Future.successful(Right(existing))
           case None           =>

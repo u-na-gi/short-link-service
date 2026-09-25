@@ -5,13 +5,14 @@ import javax.inject._
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.Future
 
-/** 保存できる件数の上限。設定 `shortener.max-links` から `Module` が作る。 */
+/** Max number of stored links. `Module` creates it from the `shortener.max-links` setting. */
 final case class LinkCapacity(maxLinks: Int)
 
-/** プロセス内 Map に保存する実装。再起動で消える。
+/** Implementation that stores links in in-process Maps. Lost on restart.
   *
-  * 公開の書き込み API なので、件数に上限を設けてメモリを使い切られないようにする。 `maxLinks` の既定値は上限なし (テスト用)。本番は DI
-  * 用の補助コンストラクタで設定の値を使う。
+  * The write API is public, so the count is limited to keep it from using up memory. `maxLinks`
+  * defaults to no limit (for tests). Production uses the configured value through the auxiliary
+  * constructor for DI.
   */
 @Singleton
 class InMemoryShortLinkRepository(maxLinks: Int = Int.MaxValue) extends ShortLinkRepository {
@@ -21,13 +22,17 @@ class InMemoryShortLinkRepository(maxLinks: Int = Int.MaxValue) extends ShortLin
 
   private val byCode = TrieMap.empty[String, ShortLink]
 
-  /** 同じ URL に同じコードを返すための逆引き。キーは正規化済みの `Url.value`。 */
+  /** Reverse lookup to return the same code for the same URL. The key is the normalized
+    * `Url.value`.
+    */
   private val byUrl = TrieMap.empty[String, ShortLink]
 
-  /** 保存した件数。`TrieMap.size` は全体をたどる (O(n)) ので、書き込みと同じロックの中で数える。 */
+  /** Number of saved links. `TrieMap.size` walks everything (O(n)), so count inside the same lock
+    * as writes.
+    */
   private var count = 0
 
-  /** 2 つの Map をまたいで判定・更新するので書き込みだけ直列化する。読み取りはロックしない。 */
+  /** Checks and updates span two Maps, so only writes are serialized. Reads do not lock. */
   override def saveIfAbsent(link: ShortLink): Future[SaveResult] = {
     val result = synchronized {
       byUrl.get(link.url.value) match {

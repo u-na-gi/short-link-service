@@ -9,15 +9,16 @@ class ErrorHandlerSpec extends PlaySpec {
 
   "ErrorHandler" should {
 
-    "未処理の例外は 500 internal_error で、例外のメッセージは返さない" in {
-      val result = new ErrorHandler().onServerError(FakeRequest(), new RuntimeException("内部の事情"))
+    "return 500 internal_error for an unhandled exception without the exception message" in {
+      val result =
+        new ErrorHandler().onServerError(FakeRequest(), new RuntimeException("internal details"))
 
       status(result) mustBe INTERNAL_SERVER_ERROR
       (contentAsJson(result) \ "error").as[String] mustBe "internal_error"
       contentAsJson(result) mustBe Json.obj("error" -> "internal_error")
     }
 
-    "クライアントエラーはステータスに応じたコードを JSON で返し、Play のメッセージは返さない" in {
+    "return a JSON code matching the status for a client error, without Play's message" in {
       val result = new ErrorHandler().onClientError(FakeRequest(), NOT_FOUND, "no route")
 
       status(result) mustBe NOT_FOUND

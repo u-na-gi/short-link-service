@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef } from "react";
 
-// Turnstile (staging / prod) のウィジェット。短縮と復元の送信のたびにトークンを取り、X-Turnstile-Token で送る。
-// Worker (worker/turnstile.ts) が siteverify で検証する。サイトキーはビルド時の VITE_TURNSTILE_SITE_KEY で、
-// 無い環境 (develop / ローカル) では何もしない。
+// Turnstile widget (staging / prod). Gets a token on every shorten and resolve submit and sends it as X-Turnstile-Token.
+// The Worker (worker/turnstile.ts) verifies it with siteverify. The site key is VITE_TURNSTILE_SITE_KEY at build time;
+// environments without it (develop / local) do nothing.
 
 const siteKey: string | undefined = import.meta.env.VITE_TURNSTILE_SITE_KEY || undefined;
 
 export const turnstileEnabled = siteKey !== undefined;
 
-// Worker の TurnstileAction と揃える
+// Keep in sync with the Worker's TurnstileAction
 export type TurnstileAction = "shorten" | "resolve";
 
 type RenderOptions = {
@@ -36,7 +36,7 @@ declare global {
 
 let scriptLoading: Promise<TurnstileApi> | null = null;
 
-// Cloudflare のスクリプトは Turnstile を使う環境でだけ、最初に要ったときに 1 回だけ読む
+// Load the Cloudflare script only in environments that use Turnstile, once, the first time it is needed
 function loadTurnstile(): Promise<TurnstileApi> {
   scriptLoading ??= new Promise((resolve, reject) => {
     const script = document.createElement("script");
@@ -54,14 +54,14 @@ function loadTurnstile(): Promise<TurnstileApi> {
 }
 
 /**
- * フォームごとに 1 つウィジェットを置く。`getToken` は送信のたびに新しいトークンを取る (トークンは 1 回しか使えない)。
- * 普段は見えず、Cloudflare が必要と判断したときだけ containerRef の場所にチェックを出す。
- * Turnstile を使わない環境では常に null を返す。取れなかったときは "failed"。
+ * One widget per form. `getToken` gets a new token on every submit (a token can be used only once).
+ * Normally invisible; shows a check at containerRef only when Cloudflare decides it is needed.
+ * Always returns null in environments without Turnstile. Returns "failed" when a token could not be obtained.
  */
 export function useTurnstile(action: TurnstileAction) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widget = useRef<{ api: TurnstileApi; id: string } | null>(null);
-  // 送信中のトークン待ち。次の送信が来たら古い待ちは捨てる (古い応答は呼び出し側でも捨てている)
+  // Pending token wait for a submit. A new submit discards the old wait (callers also discard stale responses)
   const pending = useRef<((token: string | "failed") => void) | null>(null);
 
   useEffect(() => {
@@ -101,7 +101,7 @@ export function useTurnstile(action: TurnstileAction) {
 
   const getToken = useCallback(async (): Promise<string | null | "failed"> => {
     if (!siteKey) return null;
-    // スクリプトの読み込みが終わる前に送られたら、読み込みを待つ
+    // If submitted before the script finishes loading, wait for it
     await loadTurnstile().catch(() => undefined);
     const current = widget.current;
     if (!current) return "failed";

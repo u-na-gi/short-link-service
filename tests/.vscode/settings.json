@@ -1,7 +1,7 @@
 {
-  // 整形は Prettier (設定は .prettierrc)、lint は oxlint (設定は .oxlintrc.json)。
-  // 役割が重ならないよう、フォーマットは Prettier 側にだけ任せている。
-  // 他言語には影響させたくないので ts のみに限定する
+  // Formatting is Prettier (config in .prettierrc), lint is oxlint (config in .oxlintrc.json).
+  // So their roles do not overlap, formatting is left to Prettier only.
+  // Limited to ts so other languages are not affected
   "[typescript]": {
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "esbenp.prettier-vscode",

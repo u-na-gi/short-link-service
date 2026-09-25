@@ -1,200 +1,200 @@
-# バックエンド API サーバ (`src/server`)
+# Backend API server (`src/server`)
 
-URL 短縮および復元を提供する JSON API サーバです。Scala 3 と Play Framework 3 で構築されており、Twirl や静的アセット管理を排した純粋な API サーバとして動作します。
+A JSON API server that shortens and resolves URLs. It is built with Scala 3 and Play Framework 3, and runs as a pure API server without Twirl or static asset handling.
 
-## 目次
+## Contents
 
-- [技術スタック](#技術スタック)
-- [開発コマンド](#開発コマンド)
-- [HTTP API 仕様](#http-api-仕様)
-  - [エンドポイント一覧](#エンドポイント一覧)
-  - [エラーレスポンス規約](#エラーレスポンス規約)
-  - [エラーコード一覧](#エラーコード一覧)
-  - [リクエスト追跡 (`X-Request-Id`)](#リクエスト追跡-x-request-id)
-- [アーキテクチャとレイヤ構成](#アーキテクチャとレイヤ構成)
-- [コアドメインとビジネスロジック](#コアドメインとビジネスロジック)
-- [ログ設計](#ログ設計)
-- [テスト方針](#テスト方針)
-
----
-
-## 技術スタック
-
-| 分類                          | 採用技術                           | バージョン / 補足                   |
-| ----------------------------- | ---------------------------------- | ----------------------------------- |
-| 言語                          | Scala                              | 3.3.6                               |
-| Web フレームワーク            | Play Framework                     | 3.0.11 (JSON API 専用)              |
-| ビルドツール                  | sbt                                | 1.13.0                              |
-| ランタイム                    | JDK                                | 21 (Eclipse Temurin)                |
-| DI コンテナ                   | Guice                              | Play 組み込み                       |
-| JSON ライブラリ               | Play JSON                          | `Reads` / `Writes`                  |
-| HTTP クライアント (URL検証用) | okhttp                             | 4.12.0 (`HttpUrl` による厳格パース) |
-| ロギング                      | Logback + logstash-logback-encoder | 9.0 (JSON 構造化ログ)               |
-| テストフレームワーク          | ScalaTest + scalatestplus-play     | 7.0.2                               |
+- [Tech stack](#tech-stack)
+- [Development commands](#development-commands)
+- [HTTP API spec](#http-api-spec)
+  - [Endpoints](#endpoints)
+  - [Error response rules](#error-response-rules)
+  - [Error codes](#error-codes)
+  - [Request tracing (`X-Request-Id`)](#request-tracing-x-request-id)
+- [Architecture and layers](#architecture-and-layers)
+- [Core domain and business logic](#core-domain-and-business-logic)
+- [Logging design](#logging-design)
+- [Testing approach](#testing-approach)
 
 ---
 
-## 開発コマンド
+## Tech stack
 
-本ディレクトリ (`src/server/`) で実行します。
+| Category                        | Technology                         | Version / notes                      |
+| ------------------------------- | ---------------------------------- | ------------------------------------ |
+| Language                        | Scala                              | 3.3.6                                |
+| Web framework                   | Play Framework                     | 3.0.11 (JSON API only)               |
+| Build tool                      | sbt                                | 1.13.0                               |
+| Runtime                         | JDK                                | 21 (Eclipse Temurin)                 |
+| DI container                    | Guice                              | Built into Play                      |
+| JSON library                    | Play JSON                          | `Reads` / `Writes`                   |
+| HTTP client (for URL checks)    | okhttp                             | 4.12.0 (strict parsing via `HttpUrl`) |
+| Logging                         | Logback + logstash-logback-encoder | 9.0 (structured JSON logs)           |
+| Test framework                  | ScalaTest + scalatestplus-play     | 7.0.2                                |
+
+---
+
+## Development commands
+
+Run in this directory (`src/server/`).
 
 ```sh
-# 開発サーバの起動 (http://localhost:9000 で待ち受け)
+# Start the dev server (listens on http://localhost:9000)
 sbt run
 
-# 全テストの実行 (現在 79 件)
+# Run all tests (currently 79)
 sbt test
 
-# 特定のテストクラスのみ実行
+# Run only one test class
 sbt "testOnly domain.UrlSpec"
 
-# テスト名で絞り込んで実行 (ScalaTest)
+# Run tests filtered by name (ScalaTest)
 sbt "testOnly domain.UrlSpec -- -z \"normalize\""
 
-# コードフォーマット (設定: .scalafmt.conf)
+# Format code (config: .scalafmt.conf)
 sbt scalafmtAll
 ```
 
 > [!NOTE]
-> フロントエンドや E2E と組み合わせた全体起動は、リポジトリルートの `make up` または `make e2e` を使用します。詳細は [docs/development.md](../../docs/development.md) を参照してください。
+> To start everything together with the front end and E2E, use `make up` or `make e2e` at the repository root. See [docs/development.md](../../docs/development.md) for details.
 
 ---
 
-## HTTP API 仕様
+## HTTP API spec
 
-Play Framework はポート `9000` で待ち受けます。
-ローカル開発環境では Vite 開発サーバ (`localhost:5173`) が `/api/*` および `/{英数8文字}` を Play にプロキシするため、ブラウザからは `localhost:5173` の単一オリジンとしてアクセスできます。
+Play Framework listens on port `9000`.
+In local development, the Vite dev server (`localhost:5173`) proxies `/api/*` and `/{8 alphanumeric characters}` to Play, so the browser sees a single origin at `localhost:5173`.
 
-### エンドポイント一覧
+### Endpoints
 
-| メソッドとパス                           | 役割                                                                                                                                         | 成功時レスポンス                                                                  | 主なエラー                                                                                         |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `GET /`                                  | ヘルスチェック (API サーバ直接)                                                                                                              | 200 `{"status":"ok"}`                                                             | -                                                                                                  |
-| `GET /api/v1/health`                     | ヘルスチェック (フロント / プロキシ経由用)                                                                                                   | 200 `{"status":"ok"}`                                                             | -                                                                                                  |
-| `POST /api/v1/links`                     | 短縮リンク作成。Body は `{"url": "..."}`。Cookie セッションを持たないため CSRF チェック対象外 (`+ nocsrf`)。                                 | 201 `{ "code": "...", "shortUrl": "...", "originalUrl": "..." }`                  | 400 `invalid_request`<br>400 `invalid_url`<br>400 `self_reference`<br>500 `code_generation_failed` |
-| `GET /api/v1/links/resolve?shortUrl=...` | 短縮 URL の復元。短縮 URL 全体をクエリパラメータで受け取り元 URL を返す。自サービスの URL かどうか、どこがコードかの判定はサーバが行います。 | 200 `{ "code": "...", "shortUrl": "...", "originalUrl": "..." }` (作成と同じ形式) | 400 `invalid_request`<br>400 `not_short_url`<br>404 `not_found`                                    |
-| `GET /:code`                             | 短縮 URL のリダイレクト。ルーティング定義の末尾に配置。                                                                                      | 302 `Location: <元URL>` (Play 既定の 303 ではなく 302 を明示)                     | 404 `{"error":"not_found"}`                                                                        |
+| Method and path                          | Purpose                                                                                                                                                         | Success response                                                                  | Main errors                                                                                        |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `GET /`                                  | Health check (direct to the API server)                                                                                                                         | 200 `{"status":"ok"}`                                                             | -                                                                                                  |
+| `GET /api/v1/health`                     | Health check (through the front end / proxy)                                                                                                                    | 200 `{"status":"ok"}`                                                             | -                                                                                                  |
+| `POST /api/v1/links`                     | Create a short link. Body is `{"url": "..."}`. Excluded from CSRF checks (`+ nocsrf`) because there is no cookie session.                                        | 201 `{ "code": "...", "shortUrl": "...", "originalUrl": "..." }`                  | 400 `invalid_request`<br>400 `invalid_url`<br>400 `self_reference`<br>500 `code_generation_failed` |
+| `GET /api/v1/links/resolve?shortUrl=...` | Resolve a short URL. Takes the whole short URL as a query parameter and returns the original URL. The server decides whether it is this service's URL and which part is the code. | 200 `{ "code": "...", "shortUrl": "...", "originalUrl": "..." }` (same shape as create) | 400 `invalid_request`<br>400 `not_short_url`<br>404 `not_found`                                    |
+| `GET /:code`                             | Redirect for a short URL. Placed last in the routes.                                                                                                            | 302 `Location: <original URL>` (302 set explicitly instead of Play's default 303) | 404 `{"error":"not_found"}`                                                                        |
 
-### エラーレスポンス規約
+### Error response rules
 
-エラー時のレスポンスボディは、セキュリティ（情報漏洩防止）とシンプルさを重視し、原則として `{"error": "<エラーコード>"}` のみを返します。
+For security (no information leaks) and simplicity, the error response body is, as a rule, only `{"error": "<error code>"}`.
 
-- 入力値、内部の上限値、例外メッセージやスタックトレースはレスポンスに含めません。
-- `invalid_url` の場合のみ、フロントエンド側で利用者に適切な案内ができるよう `reason` を付与します。
-- 利用者向けの日本語メッセージはフロントエンド側 (`src/front/src/api.ts`) でエラーコードから組み立てます。
+- Input values, internal limits, exception messages, and stack traces are not included in the response.
+- Only `invalid_url` adds `reason`, so the front end can give the user proper guidance.
+- User-facing messages are built from the error code on the front end (`src/front/src/api.ts`).
 
-### エラーコード一覧
+### Error codes
 
-| ステータス | `error`                                                                          | `reason` (付与時のみ)                                                         | 発生条件                                                                                                |
+| Status     | `error`                                                                          | `reason` (only when present)                                                  | When                                                                                                    |
 | ---------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| 400        | `invalid_request`                                                                | -                                                                             | JSON のパース失敗、必須項目 `url` の欠落や非文字列、`shortUrl` クエリの欠落、Play 自身の 400 エラー     |
-| 400        | `invalid_url`                                                                    | `empty`<br>`too_long`<br>`unsupported_scheme`<br>`malformed`<br>`credentials` | URL の形式が不正。詳細は後述の [コアドメインとビジネスロジック](#コアドメインとビジネスロジック) を参照 |
-| 400        | `self_reference`                                                                 | -                                                                             | 自サービス自身の短縮 URL を短縮しようとした（リダイレクトループ防止）                                   |
-| 400        | `not_short_url`                                                                  | -                                                                             | `resolve` に渡された URL が自サービスの短縮 URL 形式（ドメイン・パス）と一致しない                      |
-| 404        | `not_found`                                                                      | -                                                                             | 指定されたコードまたは短縮 URL が未発行（または再起動で消失済み）                                       |
-| 500        | `code_generation_failed`                                                         | -                                                                             | ランダムコード採番の衝突リトライが上限（10回）に達した                                                  |
-| 500        | `internal_error`                                                                 | -                                                                             | サーバ内の未処理例外（エラーハンドラが捕捉）                                                            |
-| その他     | `forbidden`<br>`payload_too_large`<br>`unsupported_media_type`<br>`client_error` | -                                                                             | Play Framework 組み込みのエラーを `ErrorHandler` が JSON 形式に変換したもの                             |
+| 400        | `invalid_request`                                                                | -                                                                             | JSON parse failure, required field `url` missing or not a string, `shortUrl` query missing, Play's own 400 errors |
+| 400        | `invalid_url`                                                                    | `empty`<br>`too_long`<br>`unsupported_scheme`<br>`malformed`<br>`credentials` | The URL format is invalid. See [Core domain and business logic](#core-domain-and-business-logic) below  |
+| 400        | `self_reference`                                                                 | -                                                                             | Tried to shorten a short URL of this service itself (prevents redirect loops)                           |
+| 400        | `not_short_url`                                                                  | -                                                                             | The URL passed to `resolve` does not match this service's short URL format (domain, path)               |
+| 404        | `not_found`                                                                      | -                                                                             | The given code or short URL was never issued (or was lost on restart)                                   |
+| 500        | `code_generation_failed`                                                         | -                                                                             | Retries on random code collisions hit the limit (10)                                                    |
+| 500        | `internal_error`                                                                 | -                                                                             | Unhandled exception in the server (caught by the error handler)                                         |
+| Other      | `forbidden`<br>`payload_too_large`<br>`unsupported_media_type`<br>`client_error` | -                                                                             | Play Framework's built-in errors converted to JSON by `ErrorHandler`                                    |
 
-### リクエスト追跡 (`X-Request-Id`)
+### Request tracing (`X-Request-Id`)
 
-- すべての HTTP レスポンスに `X-Request-Id` ヘッダ（サーバが発行した UUID）が付与されます。
-- クライアントから送信された `X-Request-Id` は偽装防止のため採用せず、サーバ側で常に新規採番します。
-- Play 組み込みの `request.id` (再起動で 1 に戻る連番) も使用しません。
+- Every HTTP response has an `X-Request-Id` header (a UUID issued by the server).
+- An `X-Request-Id` sent by the client is not used, to prevent spoofing; the server always issues a new one.
+- Play's built-in `request.id` (a counter that goes back to 1 on restart) is not used either.
 
 ---
 
-## アーキテクチャとレイヤ構成
+## Architecture and layers
 
-依存関係が一方向（外側 → 内側の `domain`）に向かうクリーンアーキテクチャ風のレイヤ構成を採用しています。
+The layers follow a clean-architecture-like structure where dependencies go one way (outer → inner `domain`).
 
 ```
 src/server/app/
-├── domain/                  # Play に依存しない中核ドメイン
-│   ├── Url.scala            # 検証・正規化済み URL の値オブジェクト
-│   ├── ShortLink.scala      # 短縮リンクモデル (code, url)
-│   ├── ShortLinkRepository.scala # リポジトリインターフェース (trait)
-│   ├── ShortLinkService.scala    # コード採番・発行サービスインターフェース (trait)
-│   ├── PublicBaseUrl.scala  # 自サービスの公開ベース URL 値オブジェクト
-│   └── ServiceHost.scala    # 自サービスのホスト名値オブジェクト (自己参照判定用)
-├── usecase/                 # アプリケーションの業務操作 (例外を使わず Either で返却)
-│   ├── CreateShortLink.scala  # 短縮リンク作成ユースケース
-│   └── ResolveShortLink.scala # 短縮リンク復元・検索ユースケース
-├── service/                 # ドメインサービスの具象実装
-│   └── DefaultShortLinkService.scala # SecureRandom による 8 文字採番とリトライ制御
-├── infra/inmemory/          # インフラストラクチャ層 (インメモリ実装)
-│   └── InMemoryShortLinkRepository.scala # TrieMap によるスレッドセーフなオンメモリ保持
-├── controllers/             # HTTP アダプタ層
-│   ├── LinkController.scala # 短縮作成・復元・リダイレクトのアクション
-│   ├── HomeController.scala # ヘルスチェック
-│   └── ErrorHandler.scala   # Play 自身のエラーも JSON に変換するハンドラ
-├── logging/                 # 構造化ログとマスキング処理
-│   ├── RequestIdFilter.scala # リクエストごとの UUID 付与
-│   ├── AccessLogFilter.scala # 1 リクエスト 1 行の JSON アクセスログ
-│   └── LogMasking.scala     # クエリや Body の秘匿値マスキング
-└── Module.scala             # Guice DI 設定と起動時コンフィグ検証
+├── domain/                  # Core domain with no dependency on Play
+│   ├── Url.scala            # Value object for a validated, normalized URL
+│   ├── ShortLink.scala      # Short link model (code, url)
+│   ├── ShortLinkRepository.scala # Repository interface (trait)
+│   ├── ShortLinkService.scala    # Code assignment / issuing service interface (trait)
+│   ├── PublicBaseUrl.scala  # Value object for this service's public base URL
+│   └── ServiceHost.scala    # Value object for this service's host name (for self-reference checks)
+├── usecase/                 # Application business operations (return Either, no exceptions)
+│   ├── CreateShortLink.scala  # Use case: create a short link
+│   └── ResolveShortLink.scala # Use case: resolve / look up a short link
+├── service/                 # Concrete domain service implementations
+│   └── DefaultShortLinkService.scala # 8-character codes with SecureRandom and retry control
+├── infra/inmemory/          # Infrastructure layer (in-memory implementation)
+│   └── InMemoryShortLinkRepository.scala # Thread-safe in-memory storage with TrieMap
+├── controllers/             # HTTP adapter layer
+│   ├── LinkController.scala # Actions for shorten, resolve, and redirect
+│   ├── HomeController.scala # Health check
+│   └── ErrorHandler.scala   # Handler that also turns Play's own errors into JSON
+├── logging/                 # Structured logging and masking
+│   ├── RequestIdFilter.scala # Assigns a UUID to each request
+│   ├── AccessLogFilter.scala # JSON access log, one line per request
+│   └── LogMasking.scala     # Masks secret values in query and body
+└── Module.scala             # Guice DI setup and config validation at startup
 ```
 
-### 例外を排したフロー制御
+### Flow control without exceptions
 
-- ドメイン層およびユースケース層では業務例外を `throw` しません。
-- すべて `Future[Either[ErrorEnum, Result]]` の型で結果を返し、コントローラー層で HTTP ステータスコードと JSON にマッピングします。
-
----
-
-## コアドメインとビジネスロジック
-
-### 1. URL の検証と正規化 (`domain.Url`)
-
-`Url` のコンストラクタは `private` であり、ファクトリメソッド `Url.from(raw): Either[Url.Error, Url]` 経由でのみインスタンス化できます。
-
-1. **空白除去**: 前後の空白をトリム。空なら `Url.Error.Empty`。
-2. **文字数制限**: トリム後が 2,048 文字を超える場合は `Url.Error.TooLong`。
-3. **スキーム検証**: 正規表現でスキームを抽出し、`http` または `https` のみ許可。それ以外は `Url.Error.UnsupportedScheme`（`javascript:` や `data:` などの不正スキームを排除）。
-4. **構文解析**: okhttp の `HttpUrl.parse` を用いて厳格にパース。パース不能やホストが存在しない場合は `Url.Error.Malformed`。
-5. **認証情報の禁止**: `user:pass@host` 形式のユーザー情報が含まれる場合はフィッシング防止のため `Url.Error.ContainsCredentials`。
-6. **正規化 (Normalization)**: ホスト名の小文字化、国際化ドメイン名 (IDN) の Punycode 変換を実施。正規化後の文字列を保持し、再文字数チェックを行います。
-   - 表記ゆれのある同一 URL（大文字混在や Punycode 未変換）は、すべて同一の正規化 URL に収束します。
-
-### 2. コード採番と衝突解決 (`DefaultShortLinkService`)
-
-- **採番形式**: 英数字 (`[a-zA-Z0-9]`) 8 文字。`SecureRandom` を用いてランダム生成。
-- **既存 URL の再利用**: 採番前に `ShortLinkRepository.findByUrl` を確認し、すでに登録済みであればそのリンクを返します。
-- **衝突リトライ**: 採番したコードがすでに別の URL で使われていた場合、最大 10 回まで再採番を試行します。10 回連続で衝突した場合は `CodeExhausted` (500 `code_generation_failed`) を返します。
-- **並行性の安全性**: `InMemoryShortLinkRepository.saveIfAbsent` は排他制御 (`synchronized`) されており、同一 URL に対する並行リクエストが発生した場合でも重複登録や競合を防ぎます。
-
-### 3. 公開 URL と自己参照防止 (`PublicBaseUrl`)
-
-- **Host ヘッダ非依存**: 短縮 URL はリクエストの `Host` ヘッダではなく、設定値 `shortener.base-url` から組み立てます（リバースプロキシ配下でのホスト漏洩や偽装を防止）。
-- **自己参照の拒否 (`self_reference`)**: 自サービスのホスト名 (`ServiceHost`) 宛の URL を短縮しようとした場合、無限リダイレクトループを防ぐため 400 エラーとします。
-- **復元判定 (`codeOf`)**: `resolve` API では、URL のホストが自サービスと一致し、パスが `/[A-Za-z0-9]{8}` の 1 階層である場合のみコードとして抽出します。
+- The domain and usecase layers do not `throw` business exceptions.
+- Every result is returned as `Future[Either[ErrorEnum, Result]]`, and the controller layer maps it to an HTTP status code and JSON.
 
 ---
 
-## ログ設計
+## Core domain and business logic
 
-開発環境・本番環境を問わず、標準出力に **1 リクエスト 1 行の JSON 形式** でログを出力します (`logstash-logback-encoder`)。テキスト形式のログ出力は行いません。
+### 1. URL validation and normalization (`domain.Url`)
 
-### アクセスログ (`access` ロガー)
+The `Url` constructor is `private`; instances can only be created through the factory method `Url.from(raw): Either[Url.Error, Url]`.
 
-`AccessLogFilter` により、各リクエスト終了時に以下の JSON を 1 行で出力します。
+1. **Trim whitespace**: Trim leading and trailing whitespace. `Url.Error.Empty` if empty.
+2. **Length limit**: `Url.Error.TooLong` if longer than 2,048 characters after trimming.
+3. **Scheme check**: Extract the scheme with a regex and allow only `http` or `https`. Otherwise `Url.Error.UnsupportedScheme` (rejects bad schemes such as `javascript:` and `data:`).
+4. **Parsing**: Parse strictly with okhttp's `HttpUrl.parse`. `Url.Error.Malformed` if it cannot be parsed or has no host.
+5. **No credentials**: If it contains user info in the form `user:pass@host`, `Url.Error.ContainsCredentials`, to prevent phishing.
+6. **Normalization**: Lowercase the host name and convert internationalized domain names (IDN) to Punycode. The normalized string is kept, and its length is checked again.
+   - The same URL written in different ways (mixed case, not yet Punycode) all converge to the same normalized URL.
 
-- `requestId`: サーバが採番した UUID (`X-Request-Id`)
+### 2. Code assignment and collision handling (`DefaultShortLinkService`)
+
+- **Code format**: 8 alphanumeric characters (`[a-zA-Z0-9]`), generated randomly with `SecureRandom`.
+- **Reuse existing URLs**: Before assigning a code, check `ShortLinkRepository.findByUrl`; if the URL is already registered, return that link.
+- **Collision retry**: If the generated code is already used by another URL, try a new code up to 10 times. If it collides 10 times in a row, return `CodeExhausted` (500 `code_generation_failed`).
+- **Concurrency safety**: `InMemoryShortLinkRepository.saveIfAbsent` is mutually exclusive (`synchronized`), so concurrent requests for the same URL do not cause duplicate entries or races.
+
+### 3. Public URL and self-reference prevention (`PublicBaseUrl`)
+
+- **Independent of the Host header**: Short URLs are built from the setting `shortener.base-url`, not from the request's `Host` header (prevents host leaks and spoofing behind a reverse proxy).
+- **Reject self-references (`self_reference`)**: Shortening a URL that points at this service's host name (`ServiceHost`) is a 400 error, to prevent infinite redirect loops.
+- **Resolve check (`codeOf`)**: The `resolve` API extracts a code only when the URL's host matches this service and the path is a single segment `/[A-Za-z0-9]{8}`.
+
+---
+
+## Logging design
+
+In both development and production, logs go to stdout **as JSON, one line per request** (`logstash-logback-encoder`). There is no text log format.
+
+### Access log (`access` logger)
+
+`AccessLogFilter` writes the following JSON as one line when each request finishes.
+
+- `requestId`: UUID issued by the server (`X-Request-Id`)
 - `method`, `path`, `status`, `elapsedMs`
-- `host`: `X-Forwarded-Host` を優先解釈
-- `requestBody`, `responseBody`: マスキング処理済みデータ
+- `host`: `X-Forwarded-Host` takes priority
+- `requestBody`, `responseBody`: masked data
 
-### 秘匿情報のマスキング (`LogMasking`)
+### Masking secrets (`LogMasking`)
 
-- 元 URL のクエリパラメータ等に機密情報やトークンが含まれうるため、リクエスト／レスポンスの Body やクエリは**原則としてキー名のみを残して値は `***` にマスク**します。
-- 値の出力を許可しているのは、レスポンスの `error` コードと短縮 `code` のみです。
-- さらに `conf/logback.xml` のデコレータ設定により、万が一ログメッセージ内に `url`, `shortUrl`, `originalUrl` が含まれた場合でも自動でマスクされる多重防御を施しています。
+- The original URL's query parameters etc. may contain secrets or tokens, so request / response bodies and queries **keep only the key names, and values are masked as `***`, as a rule**.
+- Only the response's `error` code and the short `code` are allowed to show their values.
+- On top of that, the decorator in `conf/logback.xml` masks `url`, `shortUrl`, and `originalUrl` automatically even if they end up in a log message, as defense in depth.
 
 ---
 
-## テスト方針
+## Testing approach
 
-本ディレクトリ内のテスト (`src/server/test/`) は、ドメインロジックの網羅的検証とコントローラーの入出力検証を担います。
+The tests in this directory (`src/server/test/`) cover the domain logic thoroughly and check controller input and output.
 
-- **モック / スタブの最小化**: ユースケースのテスト (`CreateShortLinkSpec`) は DI コンテナを使わず `new` で直接組み立てます。
-- **乱数の固定化**: `test/support/SequenceCodes` を用いて、テスト実行時に生成されるコード順序を固定化し、衝突リトライや重複排除の挙動を決定論的にテストしています。
+- **Minimal mocks / stubs**: Use case tests (`CreateShortLinkSpec`) build objects directly with `new`, without the DI container.
+- **Fixed random codes**: `test/support/SequenceCodes` fixes the order of codes generated during tests, so collision retry and deduplication behavior are tested deterministically.

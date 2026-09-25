@@ -10,10 +10,12 @@ import play.api.mvc.Results._
 import play.api.mvc.{RequestHeader, Result}
 import scala.concurrent.Future
 
-/** Play 自身が返すエラー (壊れた JSON・許可されない Host・未処理の例外など) も、API と同じ `{"error": ...}` の形で返す。 既定のハンドラは本番モードで
-  * HTML を返してしまう。
+/** Errors that Play itself returns (broken JSON, a Host that is not allowed, unhandled exceptions,
+  * etc.) also use the same `{"error": ...}` shape as the API. The default handler returns HTML in
+  * prod mode.
   *
-  * 詳細 (Play のメッセージや例外) はサーバのログにだけ英語で出し、利用者にはエラーコードだけ返す。
+  * Details (Play's message or the exception) go only to the server log, in English. Users get only
+  * the error code.
   */
 @Singleton
 class ErrorHandler extends HttpErrorHandler {
@@ -25,8 +27,8 @@ class ErrorHandler extends HttpErrorHandler {
       statusCode: Int,
       message: String
   ): Future[Result] = {
-    // message には Jackson のパースエラーなど、送られた body の断片が入ることがあるので、利用者に返さず DEBUG に留める。
-    // ステータスはアクセスログに出る。
+    // message can contain fragments of the sent body, such as Jackson parse errors, so do not return it; keep it at DEBUG.
+    // The status shows up in the access log.
     logger.debug(s"client error $statusCode: $message")(using RequestLog.marker(request))
     Future.successful(Status(statusCode)(Json.obj("error" -> clientErrorCode(statusCode))))
   }
@@ -35,7 +37,7 @@ class ErrorHandler extends HttpErrorHandler {
     logger.error(s"unhandled exception in ${request.method} ${request.path}", exception)(using
       RequestLog.marker(request)
     )
-    // 例外のメッセージには内部の事情が入るので、利用者には返さない
+    // Exception messages contain internal details, so do not return them to users
     Future.successful(InternalServerError(Json.obj("error" -> "internal_error")))
   }
 

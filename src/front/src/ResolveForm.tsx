@@ -9,12 +9,12 @@ type State =
   | { kind: "done"; link: ShortLink }
   | { kind: "error"; message: string };
 
-/** 短縮 URL を貼り付けると、元の URL を表示する。 */
+/** Paste a short URL to show the original URL. */
 export function ResolveForm() {
   const [value, setValue] = useState("");
   const [state, setState] = useState<State>({ kind: "idle" });
   const inputRef = useRef<HTMLInputElement>(null);
-  // 貼り付けを続けたとき、遅れて返った古い応答で新しい結果を上書きしないための連番。
+  // Sequence number so a stale response arriving late does not overwrite a newer result when pasting repeatedly.
   const latest = useRef(0);
   const inputId = useId();
   const errorId = useId();
@@ -26,7 +26,7 @@ export function ResolveForm() {
     if (problem !== null) {
       const message =
         problem === "empty"
-          ? "元に戻したい短縮 URL を貼り付けてください。"
+          ? "Paste the short URL you want to resolve."
           : describeUrlProblem(problem);
       setState({ kind: "error", message });
       return;
@@ -49,7 +49,7 @@ export function ResolveForm() {
 
   function onChange(next: string) {
     setValue(next);
-    // 短縮フォームと同じく、入力のたびに確かめる。空欄はエラーにしない。
+    // Like the shorten form, check on every input. An empty field is not an error.
     const problem = findUrlProblem(next);
     if (problem !== null && problem !== "empty") {
       latest.current++;
@@ -60,7 +60,7 @@ export function ResolveForm() {
   }
 
   function onPaste(_: ClipboardEvent<HTMLInputElement>) {
-    // 短縮フォームと同じく、貼り付けが入力欄に反映された後の値で送る。
+    // Like the shorten form, send the value after the paste is applied to the input.
     setTimeout(() => {
       if (inputRef.current) void submit(inputRef.current.value);
     }, 0);
@@ -70,10 +70,10 @@ export function ResolveForm() {
   const hasError = state.kind === "error";
 
   return (
-    <section className="resolve" aria-label="短縮 URL を元に戻す">
+    <section className="resolve" aria-label="Resolve a short URL">
       <form className="search" onSubmit={onSubmit} noValidate aria-busy={loading}>
         <label className="visually-hidden" htmlFor={inputId}>
-          元に戻したい短縮 URL
+          Short URL to resolve
         </label>
         <input
           ref={inputRef}
@@ -84,7 +84,7 @@ export function ResolveForm() {
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}
-          placeholder="元に戻したい短縮 URL を貼り付け"
+          placeholder="Paste a short URL to resolve"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onPaste={onPaste}
@@ -92,7 +92,7 @@ export function ResolveForm() {
           aria-describedby={hasError ? errorId : undefined}
         />
         <button className="search-submit" type="submit" disabled={loading}>
-          {loading ? "確認中…" : "元に戻す"}
+          {loading ? "Checking…" : "Resolve"}
         </button>
       </form>
       <div ref={turnstile.containerRef} className="turnstile" />
@@ -104,7 +104,7 @@ export function ResolveForm() {
           </p>
         )}
         {state.kind === "done" && (
-          <section className="result" key={state.link.code} aria-label="元の URL">
+          <section className="result" key={state.link.code} aria-label="Original URL">
             <a
               className="resolved-url"
               href={state.link.originalUrl}

@@ -5,15 +5,15 @@
 
 # An example controller showing a sample home page
 GET     /                           controllers.HomeController.index()
-# フロント (Vite / Cloudflare Worker) 経由でも届くヘルスチェック。GET / はフロント側では index.html になる
+# Health check that also works through the front end (Vite / Cloudflare Worker). On the front end, GET / is index.html
 GET     /api/v1/health              controllers.HomeController.index()
 
 
-# Cookie のセッションを持たない API なので CSRF の対象外にする。
-# ブラウザは localhost の Cookie をポートを問わず送るため、付けないと別アプリの Cookie で 403 になりうる
+# This API has no cookie session, so exclude it from CSRF.
+# Browsers send localhost cookies regardless of port, so without this, another app's cookies can cause a 403
 + nocsrf
 POST    /api/v1/links       controllers.LinkController.create()
 GET     /api/v1/links/resolve   controllers.LinkController.resolve(shortUrl: Option[String])
 
-# 短縮URL。他のルートより後ろに置く
+# Short URL. Keep it after the other routes
 GET     /:code              controllers.LinkController.redirect(code: String)

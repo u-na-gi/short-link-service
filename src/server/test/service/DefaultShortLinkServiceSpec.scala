@@ -16,7 +16,7 @@ class DefaultShortLinkServiceSpec extends AnyWordSpec with Matchers with ScalaFu
 
   "DefaultShortLinkService.randomCode" should {
 
-    "英大文字・小文字・数字だけの 8 文字のコードを振る" in {
+    "generate 8-character codes of only uppercase letters, lowercase letters, and digits" in {
       (1 to 1000).foreach { _ =>
         DefaultShortLinkService.randomCode() should fullyMatch regex "[A-Za-z0-9]{8}"
       }
@@ -25,7 +25,7 @@ class DefaultShortLinkServiceSpec extends AnyWordSpec with Matchers with ScalaFu
 
   "DefaultShortLinkService.issue" should {
 
-    "振ったコードで保存して返す" in {
+    "save and return the link with the generated code" in {
       val repository = new InMemoryShortLinkRepository()
       val service = new DefaultShortLinkService(repository, new SequenceCodes("fixed123"))
 
@@ -35,13 +35,13 @@ class DefaultShortLinkServiceSpec extends AnyWordSpec with Matchers with ScalaFu
         Some("https://example.com/")
     }
 
-    "既定のコンストラクタでは乱数のコードを振る" in {
+    "generate random codes with the default constructor" in {
       val service = new DefaultShortLinkService(new InMemoryShortLinkRepository())
       service.issue(url("https://example.com")).futureValue.map(_.code).toOption.get should
         fullyMatch regex "[A-Za-z0-9]{8}"
     }
 
-    "コードが被ったら採番し直す" in {
+    "generate a new code on collision" in {
       val repository = new InMemoryShortLinkRepository()
       repository.saveIfAbsent(ShortLink("fixed123", url("https://taken.example"))).futureValue
 
@@ -54,12 +54,12 @@ class DefaultShortLinkServiceSpec extends AnyWordSpec with Matchers with ScalaFu
       codes.calls shouldBe 3
       repository.findByCode("fresh001").futureValue.map(_.url.value) shouldBe
         Some("https://example.com/")
-      // 被った側のリンクは上書きされない。
+      // The link that already had the code is not overwritten.
       repository.findByCode("fixed123").futureValue.map(_.url.value) shouldBe
         Some("https://taken.example/")
     }
 
-    "被り続けたら上限回数で CodeExhausted を返す" in {
+    "return CodeExhausted after the maximum attempts when collisions continue" in {
       val repository = new InMemoryShortLinkRepository()
       repository.saveIfAbsent(ShortLink("fixed123", url("https://taken.example"))).futureValue
 
@@ -70,7 +70,7 @@ class DefaultShortLinkServiceSpec extends AnyWordSpec with Matchers with ScalaFu
       codes.calls shouldBe DefaultShortLinkService.MaxAttempts
     }
 
-    "件数の上限に達していたら StorageFull を返し、採番し直さない" in {
+    "return StorageFull without retrying when the count limit is reached" in {
       val repository = new InMemoryShortLinkRepository(maxLinks = 1)
       repository.saveIfAbsent(ShortLink("fixed123", url("https://taken.example"))).futureValue
 
@@ -81,7 +81,7 @@ class DefaultShortLinkServiceSpec extends AnyWordSpec with Matchers with ScalaFu
       codes.calls shouldBe 1
     }
 
-    "並行リクエストに先を越されていたら既存のリンクを返す" in {
+    "return the existing link when a concurrent request got there first" in {
       val repository = new InMemoryShortLinkRepository()
       val existing = ShortLink("first001", url("https://example.com"))
       repository.saveIfAbsent(existing).futureValue

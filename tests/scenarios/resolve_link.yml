@@ -1,25 +1,25 @@
-desc: 短縮URLから元URLへ戻す (302 リダイレクトと復元 API)
+desc: Resolve a short URL back to the original URL (302 redirect and resolve API)
 labels:
   - links
-# Turnstile をかけた環境 (staging / prod) ではトークンを取れないので流さない。turnstile.yml が 403 を確かめる
+# Not run in environments behind Turnstile (staging / prod) since no token can be obtained. turnstile.yml checks the 403
 if: env.E2E_TURNSTILE != 'on'
 runners:
   req:
     endpoint: ${E2E_BASE_URL:-http://localhost:9000}
-    # 302 そのものとその Location を検証したいので、リダイレクトは追わない
+    # We want to check the 302 itself and its Location, so do not follow redirects
     notFollowRedirect: true
 vars:
-  # Cloudflare Access (develop / staging) を通るサービストークン。make e2e-remote が SSM から渡す。
-  # ローカル (make e2e) では空で送り、Vite / Play は無視する。全ステップの headers で使う
+  # Service token that passes Cloudflare Access (develop / staging). make e2e-remote passes it from SSM.
+  # Locally (make e2e) it is sent empty and Vite / Play ignore it. Used in the headers of every step
   access: &access
     CF-Access-Client-Id: "${CF_ACCESS_CLIENT_ID:-}"
     CF-Access-Client-Secret: "${CF_ACCESS_CLIENT_SECRET:-}"
   originalUrl: https://www.example.org/
-  # 形は正しいが未発行の短縮URL。ホストは server の shortener.base-url と揃える (E2E_SELF_URL と同じ考え方)
+  # A well-formed but unissued short URL. The host matches the server's shortener.base-url (same idea as E2E_SELF_URL)
   unknownShortUrl: ${E2E_UNKNOWN_SHORT_URL:-https://example.com/zzzzzzzz}
 steps:
   create:
-    desc: 短縮リンクを作る
+    desc: Create a short link
     req:
       /api/v1/links:
         post:
@@ -31,7 +31,7 @@ steps:
     bind:
       code: current.res.body.code
   resolve:
-    desc: GET /{code} が 302 で元URLを Location に返す
+    desc: GET /{code} returns 302 with the original URL in Location
     req:
       /{{ code }}:
         get:
@@ -42,7 +42,7 @@ steps:
       current.res.status == 302
       && current.res.headers['Location'][0] == vars.originalUrl
   unknown:
-    desc: 未知のコードは 404 not_found
+    desc: Unknown code is 404 not_found
     req:
       /zzzzzzzz:
         get:
@@ -53,7 +53,7 @@ steps:
       current.res.status == 404
       && current.res.body.error == 'not_found'
   resolveApi:
-    desc: GET /api/v1/links/resolve に作成時の shortUrl を渡すと 200 で元URLを返す
+    desc: GET /api/v1/links/resolve with the shortUrl from creation returns 200 and the original URL
     req:
       /api/v1/links/resolve?shortUrl={{ urlencode(steps.create.res.body.shortUrl) }}:
         get:
@@ -66,7 +66,7 @@ steps:
       && current.res.body.shortUrl == steps.create.res.body.shortUrl
       && current.res.body.originalUrl == vars.originalUrl
   resolveApiUnknown:
-    desc: 形は正しいが未発行の短縮URLは 404 not_found
+    desc: Well-formed but unissued short URL is 404 not_found
     req:
       /api/v1/links/resolve?shortUrl={{ urlencode(vars.unknownShortUrl) }}:
         get:
@@ -77,7 +77,7 @@ steps:
       current.res.status == 404
       && current.res.body.error == 'not_found'
   resolveApiNotShortUrl:
-    desc: 自サービスの短縮URLでなければ 400 not_short_url
+    desc: 400 not_short_url when it is not this service's short URL
     req:
       /api/v1/links/resolve?shortUrl={{ urlencode('https://other.example/abcd1234') }}:
         get:
@@ -88,7 +88,7 @@ steps:
       current.res.status == 400
       && current.res.body.error == 'not_short_url'
   resolveApiMissing:
-    desc: shortUrl が無ければ 400 invalid_request
+    desc: 400 invalid_request when shortUrl is missing
     req:
       /api/v1/links/resolve:
         get:

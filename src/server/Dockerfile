@@ -1,19 +1,19 @@
 # syntax=docker/dockerfile:1
-# 開発用。ソースは compose でマウントし、sbt run のホットリロードで動かす。
+# For development. Sources are mounted by compose and run with sbt run hot reload.
 #
-# JDK と sbt の置き場所は .devcontainer/Dockerfile と揃える。sbt は起動時に .bsp/sbt.json へ
-# java と sbt-launch.jar の絶対パスを書くので、ずれると devcontainer 側の Metals が起動できなくなる。
+# Keep the JDK and sbt locations the same as .devcontainer/Dockerfile. On startup sbt writes the absolute paths of
+# java and sbt-launch.jar to .bsp/sbt.json, so if they differ, Metals in the devcontainer cannot start.
 FROM debian:trixie
 
 ARG USERNAME=dev
 ARG USER_UID=1000
 ARG USER_GID=1000
-# sbt ランチャーの版。実際に走る sbt の版は project/build.properties が決める
+# sbt launcher version. project/build.properties decides the sbt version that actually runs
 ARG SBT_VERSION=1.13.0
 
 ENV LANG=C.UTF-8
 
-# Play 3.0 のサポート対象は Java LTS 11/17/21 なので 21 に固定する
+# Play 3.0 supports Java LTS 11/17/21, so pin to 21
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl \
         openjdk-21-jdk-headless \
@@ -25,12 +25,12 @@ RUN curl -fsSL "https://github.com/sbt/sbt/releases/download/v${SBT_VERSION}/sbt
     && chmod -R 755 /usr/share/sbt \
     && ln -s /usr/share/sbt/bin/sbt /usr/local/bin/sbt
 
-# マウントしたソースに書くファイル (logs/ など) の所有者をホストのユーザーと揃える
+# Match the owner of files written into the mounted sources (logs/ etc.) to the host user
 RUN groupadd --gid ${USER_GID} ${USERNAME} \
     && useradd --uid ${USER_UID} --gid ${USER_GID} -m -s /bin/bash ${USERNAME}
 
-# 名前付きボリュームは初回にイメージ側のディレクトリの所有者を引き継ぐ。
-# 先に作っておかないと root 所有になり、sbt が書き込めない
+# A named volume takes the owner of the image's directory on first use.
+# If the directory is not created first, it is owned by root and sbt cannot write to it
 RUN mkdir -p /home/${USERNAME}/.sbt /home/${USERNAME}/.cache/coursier /app/target /app/project/target \
     && chown -R ${USERNAME}:${USERNAME} /home/${USERNAME} /app
 
@@ -39,5 +39,5 @@ WORKDIR /app
 
 EXPOSE 9000
 
-# 開発サーバは 0.0.0.0:9000 で待ち受ける。標準入力が閉じると止まるので compose で tty を付ける
+# The dev server listens on 0.0.0.0:9000. It stops when stdin closes, so compose attaches a tty
 CMD ["sbt", "run"]

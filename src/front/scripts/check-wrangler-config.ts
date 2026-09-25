@@ -1,10 +1,10 @@
-// wrangler.jsonc の env ごとの値が、Terraform の output と合っているか確かめる。
-// VPC Service の ID とホスト名は wrangler.jsonc に手で書いているので、Tunnel やドメインを作り直したときに
-// ずれうる。ずれたまま deploy すると、別の Tunnel に繋ぎに行ったり、公開 URL と違うホストで配ったりする。
+// Checks that the per-env values in wrangler.jsonc match the Terraform outputs.
+// The VPC Service ID and host name are written by hand in wrangler.jsonc, so they can drift when the Tunnel
+// or domain is recreated. Deploying with a drift connects to a different Tunnel or serves on a host other than the public URL.
 //
 //   terraform -chdir=infra/terraform/envs/<env> output -json | bun run scripts/check-wrangler-config.ts <env>
 //
-// make deploy-front が deploy の前に流す。
+// make deploy-front runs this before deploying.
 
 import { text } from "node:stream/consumers";
 import { unstable_readConfig } from "wrangler";
@@ -13,9 +13,7 @@ type Outputs = Record<string, { value: unknown } | undefined>;
 
 const env = process.argv[2];
 if (!env) {
-  console.error(
-    "usage: check-wrangler-config.ts <env>  (Terraform の output -json を標準入力で渡す)",
-  );
+  console.error("usage: check-wrangler-config.ts <env>  (pass Terraform output -json on stdin)");
   process.exit(2);
 }
 
@@ -30,14 +28,14 @@ const serviceId = config.vpc_services.find(
 )?.service_id;
 if (serviceId !== output("vpc_service_id")) {
   problems.push(
-    `vpc_services の SERVER の service_id (${serviceId}) が output vpc_service_id (${output("vpc_service_id")}) と違う`,
+    `service_id of SERVER in vpc_services (${serviceId}) differs from output vpc_service_id (${output("vpc_service_id")})`,
   );
 }
 
 const publicBaseUrl = output("public_base_url");
 if (typeof publicBaseUrl !== "string") {
   console.error(
-    `Terraform の output に public_base_url がありません (env: ${env})。terraform apply 済みか確かめてください`,
+    `public_base_url is missing from the Terraform outputs (env: ${env}). Check that terraform apply has been run`,
   );
   process.exit(1);
 }
@@ -47,22 +45,22 @@ const patterns = (config.routes ?? []).map((r: string | { pattern: string }) =>
 );
 if (patterns.length !== 1 || patterns[0] !== host) {
   problems.push(
-    `routes (${patterns.join(", ")}) が output public_base_url のホスト (${host}) と違う`,
+    `routes (${patterns.join(", ")}) differ from the host of output public_base_url (${host})`,
   );
 }
 
-// Turnstile のウィジェットがある環境だけ Worker で検証する
+// The Worker verifies Turnstile only in environments that have a widget
 const turnstileOn = config.vars.TURNSTILE === "on";
 const hasWidget = Boolean(output("turnstile_site_key"));
 if (turnstileOn !== hasWidget) {
   problems.push(
-    `vars.TURNSTILE (${config.vars.TURNSTILE ?? "未設定"}) と Turnstile のウィジェットの有無 (${hasWidget ? "あり" : "なし"}) が合わない`,
+    `vars.TURNSTILE (${config.vars.TURNSTILE ?? "unset"}) does not match whether a Turnstile widget exists (${hasWidget ? "yes" : "no"})`,
   );
 }
 
 if (problems.length > 0) {
-  console.error(`wrangler.jsonc の env.${env} が Terraform の output と合っていません:`);
+  console.error(`env.${env} in wrangler.jsonc does not match the Terraform outputs:`);
   for (const p of problems) console.error(`  - ${p}`);
   process.exit(1);
 }
-console.log(`wrangler.jsonc の env.${env} は Terraform の output と合っています`);
+console.log(`env.${env} in wrangler.jsonc matches the Terraform outputs`);

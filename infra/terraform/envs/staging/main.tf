@@ -1,5 +1,5 @@
-# staging 環境 (main ブランチ)。中身は modules/aws と modules/cloudflare に置き、ここは backend / provider / 環境ごとの値と
-# モジュール間のつなぎ (Tunnel と E2E 用サービストークンを Cloudflare から AWS の SSM へ) だけ持つ。
+# staging environment (main branch). The contents live in modules/aws and modules/cloudflare; this only holds backend / provider / per-environment values and
+# glue between modules (Tunnel and E2E service token from Cloudflare into AWS SSM).
 
 terraform {
   required_version = ">= 1.16"
@@ -36,26 +36,26 @@ provider "aws" {
   }
 }
 
-# API トークンは CLOUDFLARE_API_TOKEN (infra/.envrc.local) から読む
+# The API token is read from CLOUDFLARE_API_TOKEN (infra/.envrc.local)
 provider "cloudflare" {}
 
 variable "cloudflare_account_id" {
-  description = "TF_VAR_cloudflare_account_id (infra/.envrc.local) で渡す"
+  description = "Passed via TF_VAR_cloudflare_account_id (infra/.envrc.local)"
   type        = string
   sensitive   = true
 }
 
 variable "access_allowed_email" {
-  description = "Cloudflare Access でログインを許可するメールアドレス。TF_VAR_access_allowed_email (infra/.envrc.local) で渡す"
+  description = "Email address allowed to log in through Cloudflare Access. Passed via TF_VAR_access_allowed_email (infra/.envrc.local)"
   type        = string
   sensitive   = true
 }
 
 locals {
-  # Worker を公開するホスト名 (src/front/wrangler.jsonc の env.staging の routes と揃える)
+  # Hostname that serves the Worker (keep in sync with routes of env.staging in src/front/wrangler.jsonc)
   hostname = "s-stg.u-na-gi.com"
 
-  # 利用者に見せる公開 URL。Worker の routes と make e2e-remote の向き先で、短縮 URL のベースも兼ねる
+  # Public URL shown to users. Worker routes and the target of make e2e-remote; also the short URL base
   public_base_url = "https://${local.hostname}"
 }
 

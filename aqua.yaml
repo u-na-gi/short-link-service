@@ -2,9 +2,9 @@
 # aqua - Declarative CLI Version Manager
 # https://aquaproj.github.io/
 #
-# インフラ用の CLI の版をここで固定する。devcontainer と CI で同じ版を使う。
-# 実体は初回実行時に落ちる (aqua i -l でリンクだけ作ってある)。
-# 版を上げたら aqua upc -prune で aqua-checksums.json を更新する
+# Pin infra CLI versions here. The devcontainer and CI use the same versions.
+# The actual binaries are downloaded on first run (aqua i -l has only created the links).
+# After bumping a version, update aqua-checksums.json with aqua upc -prune
 checksum:
   enabled: true
   require_checksum: true

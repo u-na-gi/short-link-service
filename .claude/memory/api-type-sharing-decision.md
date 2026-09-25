@@ -1,6 +1,6 @@
 ---
 name: api-type-sharing-decision
-description: front/server 間の API 型共有 (OpenAPI/protobuf/JSON Schema) は導入しないと決めた経緯
+description: Background on deciding not to introduce API type sharing (OpenAPI/protobuf/JSON Schema) between front/server
 metadata:
   node_type: memory
   type: project
@@ -8,11 +8,11 @@ metadata:
   modified: 2026-09-23T20:53:25.644Z
 ---
 
-2026-09-23、front (React+TS) と server (Play/Scala 3) の request/response 型共有を検討したが、取り組まないと決定。
+On 2026-09-23, sharing request/response types between front (React+TS) and server (Play/Scala 3) was considered, but decided against.
 
-- OpenAPI は user が明確に反対。候補にするなら protobuf か JSON Schema。
-- 調査結果: ScalaPB 0.11.x + scalapb-playjson 0.18.0 (Scala 3 / play-json 3.0 対応、ただしリリースは 2024-06 で止まり気味)、TS は @bufbuild/protobuf で JSON over HTTP 運用は可能だった。
-- それでもエンドポイント数に対して過剰と判断して見送り。
+- The user explicitly opposed OpenAPI. If candidates were considered, they would be protobuf or JSON Schema.
+- Investigation results: ScalaPB 0.11.x + scalapb-playjson 0.18.0 (supporting Scala 3 / play-json 3.0, though releases slowed down after 2024-06); on TS, @bufbuild/protobuf allowed JSON over HTTP operation.
+- Even so, it was judged overkill for the number of endpoints and discarded.
 
-**Why:** 小規模なので仕組みのコストが見合わない。
-**How to apply:** 型共有の仕組みを再提案しない。話が再燃したら OpenAPI は出さず、上の調査結果から始める。
+**Why:** Because of the small scale, the cost of the mechanism is not justified.
+**How to apply:** Do not propose a type-sharing mechanism again. If the topic resurfaces, do not bring up OpenAPI; start from the investigation results above.

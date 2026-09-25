@@ -1,14 +1,14 @@
-# ECS の service とタスク定義。Terraform が作ったものは tfstate プラグインで state から読む。
+# ECS service and task definition. Resources created by Terraform are read from state via the tfstate plugin.
 #
-# タスクは Fargate で、server (Play) と cloudflared (Cloudflare Tunnel) の 2 コンテナ。
-# メモリはタスク 2048 のうち server 1536 / cloudflared 256。Play の JVM はコンテナの上限の 75% をヒープにする。
-# cloudflared は server のヘルスチェック (curl で /api/v1/health) が通ってから起動する。先に Tunnel が繋がると、
-# Play が起動するまでの間 Worker からの転送が失敗するため。
+# The task runs on Fargate with 2 containers: server (Play) and cloudflared (Cloudflare Tunnel).
+# Memory: of the task's 2048, server 1536 / cloudflared 256. Play's JVM uses 75% of the container limit as heap.
+# cloudflared starts after the server health check (curl /api/v1/health) passes. If the Tunnel connects first,
+# forwarding from the Worker fails until Play has started.
 #
-#   ENV=develop IMAGE_TAG=<ECR のタグ> ecspresso deploy --config ecspresso.yml
+#   ENV=develop IMAGE_TAG=<ECR tag> ecspresso deploy --config ecspresso.yml
 #
-# ENV: develop / staging / prod。クラスタ名と tfstate の key を決める。
-# IMAGE_TAG: short-link-service/server のタグ。
+# ENV: develop / staging / prod. Determines the cluster name and the tfstate key.
+# IMAGE_TAG: tag of short-link-service/server.
 region: ap-northeast-1
 cluster: short-link-{{ must_env `ENV` }}
 service: server
@@ -19,7 +19,7 @@ plugins:
   - name: tfstate
     config:
       url: s3://short-link-service-tfstate-0b102b6e/envs/{{ must_env `ENV` }}/terraform.tfstate
-  # ECR は環境をまたいで 1 つ (infra/terraform/shared)
+  # One ECR shared across environments (infra/terraform/shared)
   - name: tfstate
     func_prefix: shared_
     config:

@@ -1,39 +1,39 @@
 variable "repository" {
-  description = "リポジトリ名 (owner は provider の owner)"
+  description = "Repository name (owner is the provider's owner)"
   type        = string
 }
 
 variable "environment" {
-  description = "GitHub の Environment 名。AWS の OIDC ロールはこの名前で引き受け元を絞っている (infra/terraform/shared/ci.tf)"
+  description = "GitHub Environment name. The AWS OIDC role restricts who can assume it by this name (infra/terraform/shared/ci.tf)"
   type        = string
 }
 
 variable "branch_patterns" {
-  description = "この Environment にデプロイできるブランチ。branch_patterns と tag_patterns がどちらも空なら制限しない (plan 用)"
+  description = "Branches that can deploy to this Environment. If both branch_patterns and tag_patterns are empty, there is no restriction (for plan)"
   type        = list(string)
   default     = []
 }
 
 variable "tag_patterns" {
-  description = "この Environment にデプロイできるタグ"
+  description = "Tags that can deploy to this Environment"
   type        = list(string)
   default     = []
 }
 
 variable "reviewer_user_ids" {
-  description = "デプロイの前に承認が要る人 (GitHub のユーザー ID)。空なら承認なし"
+  description = "People whose approval is required before deploying (GitHub user IDs). Empty means no approval"
   type        = list(number)
   default     = []
 }
 
 variable "variables" {
-  description = "Environment の変数 (ログに出てよい値)"
+  description = "Environment variables (values that may appear in logs)"
   type        = map(string)
   default     = {}
 }
 
 variable "secrets" {
-  description = "Environment のシークレット (ログでは伏せ字になる)"
+  description = "Environment secrets (masked in logs)"
   type        = map(string)
   default     = {}
   sensitive   = true

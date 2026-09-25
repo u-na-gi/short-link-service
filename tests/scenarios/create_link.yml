@@ -1,20 +1,20 @@
-desc: URL を短縮できる
+desc: Can shorten a URL
 labels:
   - links
-# Turnstile をかけた環境 (staging / prod) ではトークンを取れないので流さない。turnstile.yml が 403 を確かめる
+# Not run in environments behind Turnstile (staging / prod) since no token can be obtained. turnstile.yml checks the 403
 if: env.E2E_TURNSTILE != 'on'
 runners:
   req: ${E2E_BASE_URL:-http://localhost:9000}
 vars:
-  # Cloudflare Access (develop / staging) を通るサービストークン。make e2e-remote が SSM から渡す。
-  # ローカル (make e2e) では空で送り、Vite / Play は無視する。全ステップの headers で使う
+  # Service token that passes Cloudflare Access (develop / staging). make e2e-remote passes it from SSM.
+  # Locally (make e2e) it is sent empty and Vite / Play ignore it. Used in the headers of every step
   access: &access
     CF-Access-Client-Id: "${CF_ACCESS_CLIENT_ID:-}"
     CF-Access-Client-Secret: "${CF_ACCESS_CLIENT_SECRET:-}"
   originalUrl: https://www.example.org/
 steps:
   create:
-    desc: POST /api/v1/links が 201 と短縮リンクを返す
+    desc: POST /api/v1/links returns 201 and a short link
     req:
       /api/v1/links:
         post:
@@ -30,7 +30,7 @@ steps:
       && current.res.body.code matches '^[A-Za-z0-9]{8}$'
       && current.res.body.shortUrl endsWith ('/' + current.res.body.code)
   createAgain:
-    desc: 同じ URL をもう一度 POST すると同じ code が返る
+    desc: POSTing the same URL again returns the same code
     req:
       /api/v1/links:
         post:

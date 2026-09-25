@@ -1,8 +1,8 @@
 # short-link-service devcontainer
 #
-# dev サービス 1 つ。コンテナの中に入って sbt で開発する。
-# Docker はイメージに入れず、devcontainer.json の docker-outside-of-docker feature が
-# ホストの /var/run/docker.sock を使う CLI を足す。
+# A single dev service. Enter the container and develop with sbt.
+# Docker is not in the image; the docker-outside-of-docker feature in devcontainer.json
+# adds a CLI that uses the host's /var/run/docker.sock.
 services:
   dev:
     build:
@@ -14,7 +14,7 @@ services:
     volumes:
       - ..:/app
 
-      # ---- sbt のキャッシュ (コンテナを作り直しても消えない) ----
+      # ---- sbt caches (survive container rebuilds) ----
       - sbt-cache:/home/dev/.sbt
       - ivy2-cache:/home/dev/.ivy2
       - coursier-cache:/home/dev/.cache/coursier
@@ -23,25 +23,29 @@ services:
       - ${HOME}/.ssh:/home/dev/.ssh:ro
       - ${HOME}/.gitconfig:/home/dev/.gitconfig:ro
 
-      # ---- gh の認証情報 (ホストと共有、コンテナ再作成後も再ログイン不要) ----
-      # ディレクトリ単位の bind mount なので、~/.claude.json のような inode 問題は起きない。
-      # ホスト側ディレクトリは devcontainer.json の initializeCommand がユーザー所有で作る
+      # ---- gh credentials (shared with the host; no re-login after container rebuild) ----
+      # This is a directory bind mount, so the inode problem seen with ~/.claude.json does not occur.
+      # The host-side directory is created as user-owned by initializeCommand in devcontainer.json
       - ${HOME}/.config/gh:/home/dev/.config/gh
 
-      # ---- AWS の認証情報 (SSO のプロファイルとトークンのキャッシュ) ----
-      # aws sso login がキャッシュを書くので読み書きでマウントする。
-      # ホスト側ディレクトリは devcontainer.json の initializeCommand が作る
+      # ---- AWS credentials (SSO profile and token cache) ----
+      # aws sso login writes the cache, so mount read-write.
+      # The host-side directory is created by initializeCommand in devcontainer.json
       - ${HOME}/.aws:/home/dev/.aws
 
-      # ---- aqua で落とした CLI (terraform など) ----
+      # ---- CLIs downloaded by aqua (terraform etc.) ----
       - aqua-cache:/home/dev/.local/share/aquaproj-aqua
 
-      # ---- Claude Code の認証と設定 ----
-      # ~/.claude.json をファイル単位で bind mount すると、Claude Code が「一時ファイルに
-      # 書いて rename」で更新するたびに inode が入れ替わって壊れる (毎回ログインを求め
-      # られる)。ホストとは共有せず、named volume にディレクトリごと永続化する。
-      # CLAUDE_CONFIG_DIR を向けると .claude.json もこの中に置かれる
+      # ---- Claude Code auth and settings ----
+      # Bind-mounting ~/.claude.json as a single file breaks: every time Claude Code updates it by
+      # "write a temp file and rename", the inode changes (it asks you to log in every time).
+      # Do not share it with the host; persist the whole directory in a named volume instead.
+      # With CLAUDE_CONFIG_DIR pointed here, .claude.json is also stored inside it
       - claude-config:/home/dev/.claude
+
+      # ---- Antigravity CLI (agy) auth and settings ----
+      # Like Claude Code, keep it in a named volume so rebuilding the container does not require logging in again
+      - gemini-config:/home/dev/.gemini
 
 volumes:
   sbt-cache:
@@ -49,3 +53,4 @@ volumes:
   coursier-cache:
   claude-config:
   aqua-cache:
+  gemini-config:

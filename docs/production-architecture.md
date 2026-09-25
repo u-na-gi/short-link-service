@@ -1,57 +1,58 @@
-# 運用の前提と本番アーキテクチャ (`docs/production-architecture.md`)
+# Operational Prerequisites and Production Architecture (`docs/production-architecture.md`)
 
-本サービスを実環境で稼働させるための前提条件と、AWS / Cloudflare 上のインフラ構成、CI / CD、日々の運用手順を説明します。
-構成を決めた経緯 (最初の CloudFront + NLB 案から今の形に変わった理由など) は [plan-infra.md](plan-infra.md) にあります。
+This document describes the prerequisites for running this service in production environments, infrastructure architecture on AWS / Cloudflare, CI/CD, and daily operational procedures.
 
-## 目次
+> **This service is suspended (2026-09-25).** Steps 1 to 3 under "Tearing Down Environments (Destroy)" below (ECS services, Workers, `envs/<env>` Terraform) have been completed for all three environments. `shared` (ECR, CI IAM), `github`, and `bootstrap` (state bucket) remain. The `deploy` workflow is disabled on GitHub (`gh workflow disable deploy.yml`) so that a push to `develop` / `main` or a `v*` tag does not recreate the environments; re-enable it with `gh workflow enable deploy.yml`. This document is kept as a record of the architecture when running and as procedures for recreation.
 
-- [運用の前提条件 (単一プロセス制約)](#運用の前提条件-単一プロセス制約)
-- [構成](#構成)
-  - [構成図](#構成図)
-  - [環境](#環境)
-  - [構成要素と責務](#構成要素と責務)
-  - [公開の書き込みを守る仕組み](#公開の書き込みを守る仕組み)
-- [コードの置き場所](#コードの置き場所)
+## Table of Contents
+
+- [Operational Prerequisites (Single-Process Constraint)](#operational-prerequisites-single-process-constraint)
+- [Architecture](#architecture)
+  - [Architecture Diagram](#architecture-diagram)
+  - [Environments](#environments)
+  - [Components and Responsibilities](#components-and-responsibilities)
+  - [Protection Mechanisms for Public Writes](#protection-mechanisms-for-public-writes)
+- [Code Organization](#code-organization)
 - [CI / CD](#ci--cd)
-- [運用手順](#運用手順)
-  - [リリース](#リリース)
-  - [デプロイ済みの環境を確かめる (E2E)](#デプロイ済みの環境を確かめる-e2e)
-  - [手元からデプロイする](#手元からデプロイする)
-  - [使わない間に止める](#使わない間に止める)
-  - [環境を消す (destroy)](#環境を消す-destroy)
-  - [認証情報](#認証情報)
+- [Operational Procedures](#operational-procedures)
+  - [Release](#release)
+  - [Verifying Deployed Environments (E2E)](#verifying-deployed-environments-e2e)
+  - [Deploying Manually](#deploying-manually)
+  - [Suspending When Unused](#suspending-when-unused)
+  - [Tearing Down Environments (Destroy)](#tearing-down-environments-destroy)
+  - [Credentials](#credentials)
 
 ---
 
-## 運用の前提条件 (単一プロセス制約)
+## Operational Prerequisites (Single-Process Constraint)
 
-本サービスは要件に基づき、短縮リンクの対応データをすべてサーバ内の**インメモリ (`TrieMap`)** で保持しています。外部データベースへの永続化は行っていません。
+Based on requirements, this service holds all short link mapping data in the server's **in-memory (`TrieMap`)**. No persistence to external databases is performed.
 
-1. **単一プロセスでの稼働が必須**: 複数台に振り分けると、ある台で作った短縮 URL が別の台では 404 になり、同じ URL に台ごとに別のコードが返ります。そのため ECS のタスクは常に 1 つです (`desiredCount = 1`、デプロイも `maximumPercent = 100` / `minimumHealthyPercent = 0` で新旧を並べない)。
-2. **再起動でデータが消える**: デプロイやタスクの入れ替えのたびに、それまでの短縮リンクは消えます。画面にも「予告なく終了し、短縮 URL もいつ消えるか分からない」旨を出しています。
-3. **件数の上限**: 公開の書き込み API でメモリを使い切られないよう、保存件数に上限 (`SHORTENER_MAX_LINKS`、既定 10 万件) を設けています。上限に達すると新しい短縮は 503 `storage_full` で断ります (登録済みの URL は返します)。
+1. **Single-process operation is mandatory**: If distributed across multiple instances, short URLs created on one instance result in 404s on another, and different codes are returned for the same URL on different instances. Therefore, ECS tasks are always 1 (`desiredCount = 1`, and deploys do not run old and new side-by-side with `maximumPercent = 100` / `minimumHealthyPercent = 0`).
+2. **Data is lost on restart**: On every deploy or task replacement, previously created short links disappear. The UI also warns that "service may end without notice, and short URLs may disappear at any time".
+3. **Maximum link count limit**: To prevent running out of memory from public write APIs, a storage count limit is set (`SHORTENER_MAX_LINKS`, default 100,000). Once the limit is reached, new shorten requests are rejected with 503 `storage_full` (already registered URLs are still returned).
 
-複数台にスケールする場合は、`domain.ShortLinkRepository` を共有ストア (DynamoDB など) の実装に差し替え、`Module.scala` のバインディングを変えます。上位のユースケースやコントローラは変わりません。
+To scale across multiple instances, replace `domain.ShortLinkRepository` with a shared store implementation (such as DynamoDB) and change bindings in `Module.scala`. Upper use cases and controllers remain unchanged.
 
 ---
 
-## 構成
+## Architecture
 
-### 構成図
+### Architecture Diagram
 
 ```mermaid
 flowchart LR
-    User["利用者 / ブラウザ"]
+    User["User / Browser"]
 
     subgraph CF ["Cloudflare"]
         Access["Access (develop / staging)"]
-        Worker["Worker<br/>静的アセット + 振り分け<br/>回数制限 / Turnstile の検証"]
+        Worker["Worker<br/>Static assets + routing<br/>Rate limiting / Turnstile verification"]
         VPC["Workers VPC<br/>(VPC Service)"]
         Tunnel["Tunnel"]
     end
 
     subgraph AWS ["AWS (ap-northeast-1)"]
-        subgraph Task ["ECS on Fargate (1 タスク、public subnet)"]
+        subgraph Task ["ECS on Fargate (1 task, public subnet)"]
             Play["server (Play :9000)"]
             Cloudflared["cloudflared"]
         end
@@ -61,138 +62,139 @@ flowchart LR
     end
 
     User -->|HTTPS| Access --> Worker
-    Worker -->|"/api/*, /{英数 8 文字}"| VPC --> Tunnel
-    Cloudflared -->|外向きに接続| Tunnel
+    Worker -->|"/api/*, /{8 alphanumeric chars}"| VPC --> Tunnel
+    Cloudflared -->|Outbound connection| Tunnel
     Cloudflared -->|localhost:9000| Play
-    Task -.->|イメージ / シークレット / ログ| ECR & SSM & Logs
+    Task -.->|Image / Secrets / Logs| ECR & SSM & Logs
 ```
 
-- 利用者から見える入口は Cloudflare だけです。AWS 側には入口 (ロードバランサーや開いたポート) がありません。タスクのセキュリティグループは ingress なしで、`cloudflared` が Cloudflare に外向きに Tunnel を張ります。
-- タスクは public subnet に置いてパブリック IP を付け、ECR / SSM / CloudWatch Logs / Cloudflare へは NAT を使わずに出ます。
+- The only entry point visible to users is Cloudflare. There are no entry points (load balancers or open ports) on AWS. Task security groups have no ingress; `cloudflared` establishes an outbound tunnel to Cloudflare.
+- Tasks reside in a public subnet with a public IP assigned, accessing ECR / SSM / CloudWatch Logs / Cloudflare without NAT.
+- Originally designed with CloudFront → internal NLB (VPC Origin) → ECS Managed Instances, but new account restrictions blocked ELB and CloudFront creation, and EC2 on-demand vCPU quota was 1; thus transitioned to the current architecture (Cloudflare Worker + Tunnel + Fargate). To revert to the original setup, request removal of ELB/CloudFront restrictions via AWS Support and vCPU quota increases via Service Quotas.
 
-### 環境
+### Environments
 
-| 環境    | URL                         | 出すきっかけ                      | Cloudflare Access | Turnstile |
-| ------- | --------------------------- | --------------------------------- | ----------------- | --------- |
-| develop | `https://s-dev.u-na-gi.com` | `develop` ブランチへの push       | あり              | なし      |
-| staging | `https://s-stg.u-na-gi.com` | `main` ブランチへの push          | あり              | あり      |
-| prod    | `https://s.u-na-gi.com`     | `v*` タグ (オーナーの承認が必要) | なし (公開)       | あり      |
+| Environment | URL | Trigger | Cloudflare Access | Turnstile |
+| --- | --- | --- | --- | --- |
+| develop | `https://s-dev.u-na-gi.com` | push to `develop` branch | Yes | No |
+| staging | `https://s-stg.u-na-gi.com` | push to `main` branch | Yes | Yes |
+| prod | `https://s.u-na-gi.com` | `v*` tag (Requires owner approval) | None (Public) | Yes |
 
-3 環境とも同じ AWS アカウント・Cloudflare アカウントにあり、リソース名の接頭辞 (`short-link-<env>`) と Terraform の state の key で分けています。
+All three environments are in the same AWS and Cloudflare accounts, distinguished by resource name prefix (`short-link-<env>`) and Terraform state key.
 
-### 構成要素と責務
+### Components and Responsibilities
 
-1. **Cloudflare Worker** (`src/front/worker/`、設定は `src/front/wrangler.jsonc`)
-   - `vite build` した front の静的アセットを配ります。
-   - `/api/*` と短縮 URL (`/{英数 8 文字}`) を Workers VPC の VPC Service に流します。Play へのリクエストでは Cookie・Access の JWT・利用者の `X-Forwarded-For` を落とし、元のホストを `X-Forwarded-Host` で渡します。リダイレクトは追わずに 302 をそのまま返します。
-   - Tunnel に繋がらないとき (タスクの入れ替え中など) は、Cloudflare のエラーページではなく 502 `server_unavailable` を返します。
-2. **Workers VPC / Cloudflare Tunnel**: Worker から ECS のタスクへの経路です。VPC Service の宛先は `127.0.0.1:9000` で、タスク内で Play とネットワーク名前空間を共有する `cloudflared` が受けます。
-3. **ECS on Fargate**: タスクは `server` (Play、`src/server/Dockerfile.prod`) と `cloudflared` の 2 コンテナです。`cloudflared` は `server` のヘルスチェック (`/api/v1/health`) が通ってから起動します。
-4. **SSM Parameter Store**: Play の秘密鍵 (`PLAY_HTTP_SECRET_KEY`)、Tunnel のトークン、E2E 用の Access サービストークンを SecureString で持ちます。値は Terraform が作り、タスクには ECS が注入します。
-5. **ECR**: server のイメージ。1 つのリポジトリを全環境で使い、コミットの sha でタグを付けます。prod で使ったイメージには `release-<sha>` を足し、ライフサイクルルール (タグ付きは新しい 30 個だけ残す) で消えないようにしています。
+1. **Cloudflare Worker** (`src/front/worker/`, configuration in `src/front/wrangler.jsonc`):
+   - Serves static assets built by `vite build` on the front.
+   - Routes `/api/*` and short URLs (`/{8 alphanumeric chars}`) to the VPC Service in Workers VPC. Requests forwarded to Play strip Cookies, Access JWTs, and user `X-Forwarded-For`, passing the original host via `X-Forwarded-Host`. 302 redirects are returned as-is without following.
+   - When unable to connect to the Tunnel (e.g. during task replacement), returns 502 `server_unavailable` instead of Cloudflare error pages.
+2. **Workers VPC / Cloudflare Tunnel**: Network path from Worker to ECS task. VPC Service destination is `127.0.0.1:9000`, received by `cloudflared` which shares network namespace with Play inside the task.
+3. **ECS on Fargate**: Task consists of two containers: `server` (Play, `src/server/Dockerfile.prod`) and `cloudflared`. `cloudflared` starts only after `server` passes health check (`/api/v1/health`).
+4. **SSM Parameter Store**: Stores Play secret key (`PLAY_HTTP_SECRET_KEY`), Tunnel token, and Access service token for E2E as SecureStrings. Values created by Terraform and injected by ECS.
+5. **ECR**: Server image. Single repository shared across all environments, tagged with commit SHA. Images used in prod receive additional `release-<sha>` tag, preserved by lifecycle rules (retains newest 30 tagged images).
 
-### 公開の書き込みを守る仕組み
+### Protection Mechanisms for Public Writes
 
-| 守り                          | 対象                                   | 仕組み                                                                                                                       |
-| ----------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| DDoS 防御 / Bot Fight Mode    | 全環境                                 | Cloudflare の既定の機能                                                                                                      |
-| Cloudflare Access             | develop / staging                      | 許可したメールアドレスだけワンタイムコードでログインできる。E2E はサービストークンで通る                                    |
-| Turnstile                     | staging / prod の短縮と復元            | front がウィジェットのトークンを送り、Worker が siteverify で検証する (action とホスト名も照合)。リダイレクトにはかけない |
-| 回数制限                      | 全環境の API と短縮 URL                | Workers Rate Limiting (IP ごとに API 20 回 / 分、リダイレクト 100 回 / 分)。データセンターごとのゆるい数え方で、厳密な制限としては当てにしない |
-| 件数の上限                    | 全環境                                 | アプリ側で 10 万件まで (上記)                                                                                               |
+| Protection | Target | Mechanism |
+| --- | --- | --- |
+| DDoS Defense / Bot Fight Mode | All environments | Cloudflare default features |
+| Cloudflare Access | develop / staging | Only permitted email addresses can log in via one-time code. E2E passes via service token |
+| Turnstile | Shorten and resolve on staging / prod | Front submits widget token, Worker verifies via siteverify (matching action and hostname). Not applied to redirects |
+| Rate Limiting | API and short URLs across all environments | Workers Rate Limiting (20 API calls/min, 100 redirects/min per IP). Approximate per-datacenter counting; not relied upon as a strict limit |
+| Link Count Limit | All environments | Up to 100,000 links on application side (as above) |
 
 ---
 
-## コードの置き場所
+## Code Organization
 
-| 場所                                        | 中身                                                                                                                 | 誰が適用するか                          |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| `infra/terraform/bootstrap`                 | Terraform の state を置く S3 バケット                                                                               | 手元 (最初の 1 回)                      |
-| `infra/terraform/shared`                    | ECR、GitHub Actions の OIDC とロール、環境のロールの権限境界                                                        | 手元                                    |
-| `infra/terraform/github`                    | GitHub の Environment・シークレット・ルールセット (`modules/github`)                                                | 手元 (CI に自分の権限を書き換えさせない) |
-| `infra/terraform/envs/{develop,staging,prod}` | 環境ごとの AWS (`modules/aws`) と Cloudflare (`modules/cloudflare`)                                                | CI (`deploy.yml`)。手元からもできる     |
-| `infra/ecspresso`                           | ECS の service とタスク定義。ARN などは Terraform の state から読む                                                  | CI。手元からもできる                    |
-| `src/front/wrangler.jsonc`                  | Worker の環境ごとの設定。VPC Service の ID とホスト名は Terraform の output と突き合わせてから deploy する           | CI (`make deploy-front`)。手元からもできる |
+| Location | Contents | Applied By |
+| --- | --- | --- |
+| `infra/terraform/bootstrap` | S3 bucket for Terraform state | Locally (initial setup only) |
+| `infra/terraform/shared` | ECR, GitHub Actions OIDC and roles, permission boundaries for environment roles | Locally |
+| `infra/terraform/github` | GitHub Environments, secrets, rulesets (`modules/github`) | Locally (prevents CI from modifying its own permissions) |
+| `infra/terraform/envs/{develop,staging,prod}` | Per-environment AWS (`modules/aws`) and Cloudflare (`modules/cloudflare`) | CI (`deploy.yml`). Can also be run locally |
+| `infra/ecspresso` | ECS services and task definitions. ARNs read from Terraform state | CI. Can also be run locally |
+| `src/front/wrangler.jsonc` | Per-environment Worker configuration. VPC Service ID and hostname verified against Terraform outputs before deploying | CI (`make deploy-front`). Can also be run locally |
 
 ---
 
 ## CI / CD
 
-GitHub Actions のワークフローは 3 つです。
+Three GitHub Actions workflows:
 
-- **`ci.yml`** (PR と、deploy の前に呼ばれる): gitleaks、actionlint、server のテスト、front の型・テスト・ビルド、E2E シナリオの整形、Terraform の fmt / validate / tflint、ローカルの E2E (compose)。
-- **`plan.yml`** (PR): `shared` と 3 環境の `terraform plan`。読み取り専用のロールで、結果はログにだけ出します (公開リポジトリなので PR にはコメントしない)。
-- **`deploy.yml`** (develop / main への push、`v*` タグ): CI → イメージ (無ければビルド。prod はビルドせず main のイメージを使う) → `terraform apply` → `ecspresso deploy` → Worker の deploy。
+- **`ci.yml`** (Called on PR and before deploy): gitleaks, actionlint, server tests, front typecheck/test/build, E2E scenario formatting, Terraform fmt/validate/tflint, local E2E (compose).
+- **`plan.yml`** (PR): `terraform plan` for `shared` and all 3 environments. Uses read-only role, outputs results only to logs (no PR comments since public repo).
+- **`deploy.yml`** (push to develop / main, `v*` tags): CI → image (built if missing; prod does not build, uses image from main) → `terraform apply` → `ecspresso deploy` → Worker deploy.
 
-AWS には GitHub の OIDC で入ります。ロールは GitHub の Environment ごとに引き受け元を絞り、CI が自分や環境のロールに強い権限を付けられないよう、環境のロールには権限境界を付けています。詳しくは `infra/terraform/shared/ci.tf` のコメントと [plan-infra.md](plan-infra.md) を参照してください。
+AWS access via GitHub OIDC. Roles restrict assume-role origins per GitHub Environment, with permission boundaries attached to environment roles so CI cannot grant powerful permissions to itself or environment roles. See comments in `infra/terraform/shared/ci.tf` for details.
 
 > [!NOTE]
-> デプロイ済みの環境への E2E は CI では流しません。GitHub のランナーはデータセンターの IP から来るので、`u-na-gi.com` の Bot Fight Mode に Access より手前で止められるためです (403、`cf-mitigated: challenge`)。E2E は手元から流します。
+> E2E against deployed environments is not run in CI. GitHub runners originate from datacenter IPs, which are blocked before Access by `u-na-gi.com` Bot Fight Mode (403, `cf-mitigated: challenge`). Run E2E manually from your local machine.
 
 ---
 
-## 運用手順
+## Operational Procedures
 
-以下はリポジトリのルートで、devcontainer の中から実行します。AWS は SSO のプロファイル `short-link-develop` (`aws sso login --profile short-link-develop`)、Cloudflare は `infra/.envrc.local` の認証情報を使います。
+The following steps are executed at the repository root from within the devcontainer. AWS uses SSO profile `short-link-develop` (`aws sso login --profile short-link-develop`), Cloudflare uses credentials in `infra/.envrc.local`.
 
-### リリース
+### Release
 
-1. 機能ブランチから `develop` に PR を出して merge する → develop に deploy される。
-2. `develop` から `main` に PR を出して merge する → staging に deploy される。
-3. staging を確かめたら、main のコミットに `v*` タグを切って push する (`git tag -a v0.2.0 origin/main -m ... && git push origin v0.2.0`)。
-4. Actions の画面で `prod` の deploy を承認する ("Review deployments")。
+1. Open PR from feature branch to `develop` and merge → deployed to develop.
+2. Open PR from `develop` to `main` and merge → deployed to staging.
+3. After verifying staging, create and push `v*` tag on main commit (`git tag -a v0.2.0 origin/main -m ... && git push origin v0.2.0`).
+4. Approve deploy to `prod` in Actions UI ("Review deployments").
 
-prod には main に入っているコミットしか出せません。タグを切る前に、そのコミットの staging への deploy が終わっている必要があります (イメージが無いと止まる)。
+Only commits on main can be deployed to prod. Staging deploy for that commit must complete before tagging (stops if image is missing).
 
-### デプロイ済みの環境を確かめる (E2E)
+### Verifying Deployed Environments (E2E)
 
 ```sh
-make e2e-remote ENV=develop   # staging / prod も同じ
+make e2e-remote ENV=develop   # Same for staging / prod
 ```
 
-最初にヘルスチェックを 1 回叩き、ステータスと Cloudflare の判定を `preflight:` として出します。Worker の回数制限があるので、続けて流すときは 1 分空けてください。
-develop では機能のシナリオを、Turnstile のある staging / prod ではトークンの無い書き込みが 403 で断られることを確かめます (Turnstile は人の操作を確かめる仕組みなので、機械からは通せない)。
+Sends one initial health check, outputting status and Cloudflare evaluation as `preflight:`. Due to Worker rate limits, wait 1 minute before subsequent runs.
+develop verifies feature scenarios; staging / prod with Turnstile verify that tokenless writes are rejected with 403 (Turnstile verifies human interaction and cannot be passed programmatically).
 
-### 手元からデプロイする
+### Deploying Manually
 
-CI が使えないときや、試したいときは手元からも同じことができます。
+When CI is unavailable or for testing, the same can be run manually:
 
 ```sh
 cd infra && set -a && . ./.envrc.local && set +a && export AWS_PROFILE=short-link-develop
 terraform -chdir=terraform/envs/develop apply
-ENV=develop IMAGE_TAG=<ECR のタグ> ecspresso deploy --config ecspresso/ecspresso.yml
+ENV=develop IMAGE_TAG=<ECR tag> ecspresso deploy --config ecspresso/ecspresso.yml
 cd .. && make deploy-front ENV=develop
 ```
 
-イメージを手元から push するときは `docker build --provenance=false --sbom=false -f src/server/Dockerfile.prod ...` にします (付けないと ECR のライフサイクルで実体が消える。`Dockerfile.prod` のコメント参照)。
+When pushing images manually, use `docker build --provenance=false --sbom=false -f src/server/Dockerfile.prod ...` (otherwise artifacts disappear under ECR lifecycle rules; see comments in `Dockerfile.prod`).
 
-### 使わない間に止める
+### Suspending When Unused
 
-Fargate のタスクは動いている間だけ課金されます。
+Fargate tasks are billed only while running.
 
 ```sh
-ENV=develop IMAGE_TAG=<今のタグ> ecspresso scale --config infra/ecspresso/ecspresso.yml --tasks 0   # 止める
-ENV=develop IMAGE_TAG=<今のタグ> ecspresso scale --config infra/ecspresso/ecspresso.yml --tasks 1   # 戻す
+ENV=develop IMAGE_TAG=<current tag> ecspresso scale --config infra/ecspresso/ecspresso.yml --tasks 0   # Suspend
+ENV=develop IMAGE_TAG=<current tag> ecspresso scale --config infra/ecspresso/ecspresso.yml --tasks 1   # Resume
 ```
 
-止めている間、API は Worker が 502 `server_unavailable` を返し、画面は表示されます。次の deploy でも 1 台に戻ります。
+While suspended, Worker returns 502 `server_unavailable` for API requests, while the UI continues to render. Restores to 1 task on next deploy.
 
-### 環境を消す (destroy)
+### Tearing Down Environments (Destroy)
 
-順番を守ってください。`cloudflared` が繋がったままだと Tunnel を消せず、タスクが残っていると ECS のクラスタを消せません。
+Follow the sequence strictly. If `cloudflared` remains connected, Tunnel cannot be deleted; if tasks remain, ECS cluster cannot be deleted.
 
-1. ECS の service を消す: `ENV=<env> IMAGE_TAG=<今のタグ> ecspresso delete --config infra/ecspresso/ecspresso.yml --force`
-2. Worker を消す: `cd src/front && bunx wrangler delete --env <env>` (カスタムドメインの割り当ても外れる)
-3. Terraform で消す: `terraform -chdir=infra/terraform/envs/<env> destroy` (`infra/.envrc.local` を読み込んでから)
-4. 全部やめるときは、3 環境を消したあとに `infra/terraform/github` → `infra/terraform/shared` の順に destroy する。`shared` の ECR は中のイメージを先に消す。`bootstrap` (state のバケット) は `prevent_destroy` を外してから最後に消す (自分の state もこのバケットにあるので、先にローカルへ `terraform init -migrate-state` で戻す)
+1. Delete ECS service: `ENV=<env> IMAGE_TAG=<current tag> ecspresso delete --config infra/ecspresso/ecspresso.yml --force`
+2. Delete Worker: `cd src/front && bunx wrangler delete --env <env>` (also detaches custom domain routing)
+3. Delete via Terraform: `terraform -chdir=infra/terraform/envs/<env> destroy` (after loading `infra/.envrc.local`)
+4. When decommissioning entirely, after deleting all 3 environments, destroy in order: `infra/terraform/github` → `infra/terraform/shared`. For `shared`, delete images in ECR first. Delete `bootstrap` (state bucket) last after removing `prevent_destroy` (migrate own state back to local first via `terraform init -migrate-state`).
 
-### 認証情報
+### Credentials
 
-| 何                                 | どこにあるか                                              | 使い道                                                   |
-| ---------------------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
-| AWS (手元)                         | `~/.aws` の SSO プロファイル `short-link-develop`          | Terraform / ecspresso / aws cli                          |
-| Cloudflare API トークン (手元)     | `infra/.envrc.local` の `CLOUDFLARE_API_TOKEN`            | Terraform / wrangler                                     |
-| Cloudflare API トークン (CI)       | GitHub の Environment のシークレット (deploy 用と plan 用) | CI。値は `infra/terraform/github` を手元から apply して入れる |
-| Access で許可するメールアドレス    | `infra/.envrc.local` の `TF_VAR_access_allowed_email`     | develop / staging の Access                              |
+| What | Where Located | Usage |
+| --- | --- | --- |
+| AWS (local) | `~/.aws` SSO profile `short-link-develop` | Terraform / ecspresso / aws cli |
+| Cloudflare API token (local) | `CLOUDFLARE_API_TOKEN` in `infra/.envrc.local` | Terraform / wrangler |
+| Cloudflare API token (CI) | GitHub Environment secrets (deploy and plan) | CI. Applied manually from `infra/terraform/github` |
+| Allowed emails for Access | `TF_VAR_access_allowed_email` in `infra/.envrc.local` | Access for develop / staging |
 
-Cloudflare のトークンの権限を変えたときは、効くまで数分かかることがあります。リポジトリは公開なので、アカウント ID・メールアドレス・トークンはコミットしないでください (CI の gitleaks でも検出します)。
+When Cloudflare token permissions change, it may take a few minutes to take effect. Since the repository is public, never commit account IDs, emails, or tokens (also detected by CI gitleaks).

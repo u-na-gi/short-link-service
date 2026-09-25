@@ -1,8 +1,8 @@
-# VPC と public subnet。
+# VPC and public subnets.
 #
-# Fargate のタスクを public subnet に置き、パブリック IP で ECR / CloudWatch Logs / SSM / Cloudflare へ
-# IGW から直接出る (NAT を置かない)。入口は SG で閉じ、外からは Cloudflare Tunnel でだけ届く。
-# ロードバランサーを置かないので private subnet は持たない。
+# Fargate tasks sit in public subnets and reach ECR / CloudWatch Logs / SSM / Cloudflare directly through the IGW
+# with a public IP (no NAT). Inbound is closed by the SG; from outside, they are reachable only through Cloudflare Tunnel.
+# There is no load balancer, so there are no private subnets.
 
 resource "aws_vpc" "this" {
   cidr_block           = var.vpc_cidr
@@ -12,7 +12,7 @@ resource "aws_vpc" "this" {
   tags = { Name = local.name }
 }
 
-# 既定の SG は使わないので、ルールを全部外しておく
+# The default SG is not used, so remove all of its rules
 resource "aws_default_security_group" "this" {
   vpc_id = aws_vpc.this.id
 

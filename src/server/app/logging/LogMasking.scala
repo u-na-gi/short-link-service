@@ -3,21 +3,25 @@ package logging
 import okhttp3.HttpUrl
 import play.api.libs.json._
 
-/** ログに出す JSON の値を隠す。キー (どんな項目が送られてきたか) だけ残し、値は出さない。
+/** Hides the values in JSON written to logs. Keeps only the keys (which fields were sent), not the
+  * values.
   *
-  * 元 URL のクエリには署名付き URL やパスワードリセットのトークンが入りうるので、隠すキーを列挙するのではなく 「出してよいキーだけ列挙する」側に倒している。項目が増えても既定で隠れる。
+  * The original URL's query may contain signed URLs or password reset tokens, so instead of listing
+  * keys to hide, we list only the keys that may be shown. New fields are hidden by default.
   *
-  * URL の項目だけは、何が送られてきたか追えるよう部品に分けて出す ([[urlSummary]])。
+  * Only URL fields are split into parts, so we can trace what was sent ([[urlSummary]]).
   */
 object LogMasking {
 
   val Mask = "***"
 
-  /** パスはこの文字数で切る。URL は最大 2048 文字なので、丸ごと出すとログが読みにくい */
+  /** Paths are cut at this length. URLs can be 2048 characters, which makes logs hard to read if
+    * written in full
+    */
   val MaxPathLength = 256
 
-  /** 値をすべて `Mask` に置き換える。`revealed` のキーは、値が文字列・数値・真偽値のときだけそのまま出す。`urls` のキーは、値が文字列のとき
-    * [[urlSummary]] にする。
+  /** Replaces all values with `Mask`. Keys in `revealed` are shown as-is only when the value is a
+    * string, number, or boolean. Keys in `urls` become [[urlSummary]] when the value is a string.
     */
   def mask(
       value: JsValue,
@@ -36,10 +40,12 @@ object LogMasking {
       case _              => JsString(Mask)
     }
 
-  /** URL をスキーム・ホスト・ポート (既定以外のとき)・パス・クエリのキーに分ける。
+  /** Splits a URL into scheme, host, port (when not the default), path, and query keys.
     *
-    * トークンや署名はたいていクエリに入るので、クエリは値を隠してキーだけ出す (重複は 1 つにまとめる)。フラグメントも OAuth のトークンが入りうるので、あることだけ出す。
-    * ユーザー情報 (user:pass@) は出さない。http / https として読めないものは丸ごと隠す。
+    * Tokens and signatures are usually in the query, so the query shows only keys with values
+    * hidden (duplicates merged). The fragment can also hold OAuth tokens, so only its presence is
+    * shown. User info (user:pass@) is not written. Anything that cannot be read as http / https is
+    * hidden entirely.
     */
   def urlSummary(raw: String): JsValue =
     Option(HttpUrl.parse(raw.trim)).fold[JsValue](JsString(Mask)) { url =>
@@ -57,14 +63,16 @@ object LogMasking {
       )
     }
 
-  /** `?token` のように値の無いパラメータは、名前の側にトークンが入っていることがあるので名前も隠す。 */
+  /** For parameters without a value, like `?token`, the name itself may be a token, so hide the
+    * name too.
+    */
   private def queryKeys(url: HttpUrl): Seq[String] =
     (0 until url.querySize).map { i =>
       if (url.queryParameterValue(i) == null) Mask else url.queryParameterName(i)
     }.distinct
 
-  /** logstash-logback-encoder (Jackson 3) にそのまま渡せる Java のコレクションにする。 play-json の型を渡すと Jackson
-    * がただのオブジェクトとして書き出してしまうため。
+  /** Converts to Java collections that can be passed to logstash-logback-encoder (Jackson 3) as-is.
+    * If play-json types are passed, Jackson writes them out as plain objects.
     */
   def toJava(value: JsValue): AnyRef =
     value match {

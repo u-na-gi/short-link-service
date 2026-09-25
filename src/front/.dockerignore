@@ -1,4 +1,4 @@
-# イメージに入れるのは package.json と bun.lock だけ。ソースは compose でマウントする
+# Only package.json and bun.lock go into the image. The source is mounted by compose
 *
 !package.json
 !bun.lock

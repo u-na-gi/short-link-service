@@ -3,36 +3,36 @@ package domain
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 
-/** Play を起動しない純粋なユニットテスト。 */
+/** Pure unit test that does not start Play. */
 class PublicBaseUrlSpec extends AnyWordSpec with Matchers {
 
   "PublicBaseUrl.from" should {
 
-    "スキームとホストとポートだけの URL を受け入れる" in {
+    "accept a URL with only scheme, host, and port" in {
       PublicBaseUrl.from("https://example.com").map(_.value) shouldBe Right("https://example.com")
       PublicBaseUrl.from("http://localhost:5173").map(_.value) shouldBe Right(
         "http://localhost:5173"
       )
     }
 
-    "末尾のスラッシュを落とし、ホストを小文字にそろえる" in {
+    "drop the trailing slash and lowercase the host" in {
       PublicBaseUrl.from(" https://Example.COM/ ").map(_.value) shouldBe Right(
         "https://example.com"
       )
     }
 
-    "http/https 以外を拒否する" in {
+    "reject schemes other than http/https" in {
       PublicBaseUrl.from("ftp://example.com") shouldBe Left(
         PublicBaseUrl.Error.UnsupportedScheme(Some("ftp"))
       )
       PublicBaseUrl.from("example.com") shouldBe Left(PublicBaseUrl.Error.UnsupportedScheme(None))
     }
 
-    "ホスト名が無ければ拒否する" in {
+    "reject a URL without a host name" in {
       PublicBaseUrl.from("https:///") shouldBe Left(PublicBaseUrl.Error.MissingHost)
     }
 
-    "パス・クエリ・フラグメント・認証情報付きを拒否する" in {
+    "reject a path, query, fragment, or credentials" in {
       PublicBaseUrl.from("https://example.com/s") shouldBe Left(PublicBaseUrl.Error.HasPath("/s"))
       PublicBaseUrl.from("https://example.com?a=b") shouldBe Left(PublicBaseUrl.Error.HasQuery)
       PublicBaseUrl.from("https://example.com#top") shouldBe Left(PublicBaseUrl.Error.HasFragment)
@@ -41,7 +41,7 @@ class PublicBaseUrlSpec extends AnyWordSpec with Matchers {
       )
     }
 
-    "URL として壊れていればパースの例外ごと返す" in {
+    "return the parse exception for a broken URL" in {
       PublicBaseUrl.from("https://exa mple.com") should matchPattern {
         case Left(PublicBaseUrl.Error.Malformed(_)) =>
       }
@@ -49,7 +49,7 @@ class PublicBaseUrlSpec extends AnyWordSpec with Matchers {
   }
 
   "linkTo" should {
-    "コードをパスにした短縮 URL を返す" in {
+    "return a short URL with the code as the path" in {
       PublicBaseUrl.from("https://example.com").map(_.linkTo("Xk3pR8vN")) shouldBe Right(
         "https://example.com/Xk3pR8vN"
       )
@@ -59,29 +59,29 @@ class PublicBaseUrlSpec extends AnyWordSpec with Matchers {
   "codeOf" should {
     val base = PublicBaseUrl.from("https://example.com").toOption.get
 
-    "自サービスの短縮 URL からコードを取り出す" in {
+    "extract the code from a short URL of this service" in {
       base.codeOf("https://example.com/Xk3pR8vN") shouldBe Some("Xk3pR8vN")
     }
 
-    "前後の空白・ホストの大文字・スキームやポートの違いは問わない" in {
+    "ignore surrounding whitespace, uppercase host, and different scheme or port" in {
       base.codeOf(" https://EXAMPLE.com/Xk3pR8vN ") shouldBe Some("Xk3pR8vN")
       base.codeOf("http://example.com:8080/Xk3pR8vN") shouldBe Some("Xk3pR8vN")
     }
 
-    "クエリとフラグメントは無視する" in {
+    "ignore the query and fragment" in {
       base.codeOf("https://example.com/Xk3pR8vN?utm_source=x#top") shouldBe Some("Xk3pR8vN")
     }
 
-    "コードの大文字小文字は区別したまま返す" in {
+    "keep the case of the code" in {
       base.codeOf("https://example.com/XK3PR8VN") shouldBe Some("XK3PR8VN")
     }
 
-    "他ホストなら None" in {
+    "return None for another host" in {
       base.codeOf("https://other.example/Xk3pR8vN") shouldBe None
       base.codeOf("https://sub.example.com/Xk3pR8vN") shouldBe None
     }
 
-    "パスが英数 8 文字の 1 階層でなければ None" in {
+    "return None unless the path is a single segment of 8 alphanumeric characters" in {
       base.codeOf("https://example.com/") shouldBe None
       base.codeOf("https://example.com/qEmT9gT") shouldBe None
       base.codeOf("https://example.com/Xk3pR8vNX") shouldBe None
@@ -90,7 +90,7 @@ class PublicBaseUrlSpec extends AnyWordSpec with Matchers {
       base.codeOf("https://example.com/Xk3pR8vN/") shouldBe None
     }
 
-    "URL として解釈できなければ None" in {
+    "return None when it cannot be read as a URL" in {
       base.codeOf("") shouldBe None
       base.codeOf("example.com/Xk3pR8vN") shouldBe None
       base.codeOf("Xk3pR8vN") shouldBe None
@@ -98,7 +98,7 @@ class PublicBaseUrlSpec extends AnyWordSpec with Matchers {
   }
 
   "host" should {
-    "ポートを含まないホスト名を返す" in {
+    "return the host name without the port" in {
       PublicBaseUrl.from("http://localhost:5173").map(_.host) shouldBe Right(
         ServiceHost("localhost")
       )

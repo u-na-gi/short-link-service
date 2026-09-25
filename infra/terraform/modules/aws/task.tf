@@ -1,16 +1,16 @@
-# タスクが使うもの: ロググループ、秘密鍵 (SSM)、タスク実行ロール、タスクロール。
-# タスク定義そのものは ecspresso が持ち、ここの ARN や名前を output 経由で読む。
+# What the task uses: log group, secret key (SSM), task execution role, task role.
+# The task definition itself is owned by ecspresso, which reads the ARNs and names here through outputs.
 
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
-# server と cloudflared の両方のログを入れる (ストリームの接頭辞で分ける)
+# Holds logs from both server and cloudflared (separated by stream prefix)
 resource "aws_cloudwatch_log_group" "server" {
   name              = "/ecs/${local.name}/server"
   retention_in_days = 14
 }
 
-# Play の play.http.secret.key。値は tfstate にも載る (state のバケットは暗号化して公開を遮断している)
+# Play's play.http.secret.key. The value is also stored in tfstate (the state bucket is encrypted and blocks public access)
 resource "random_password" "play_http_secret_key" {
   length  = 64
   special = false
@@ -22,7 +22,7 @@ resource "aws_ssm_parameter" "play_http_secret_key" {
   value = random_password.play_http_secret_key.result
 }
 
-# cloudflared に渡す Tunnel のトークン。ECS が SSM から TUNNEL_TOKEN に注入する
+# Tunnel token passed to cloudflared. ECS injects it from SSM into TUNNEL_TOKEN
 resource "aws_ssm_parameter" "tunnel_token" {
   name  = "/${local.name}/cloudflared/tunnel-token"
   type  = "SecureString"
@@ -30,11 +30,11 @@ resource "aws_ssm_parameter" "tunnel_token" {
 }
 
 locals {
-  # 環境のロールに付ける権限境界 (infra/terraform/shared/ci.tf)。CI の deploy ロールはこの境界付きでしか
-  # ロールを作れないので、CI がロールに何を付けても、ECS のイメージ取得・ログ・その環境のシークレットより強くならない
+  # Permissions boundary for the environment's roles (infra/terraform/shared/ci.tf). The CI deploy role can only create roles
+  # with this boundary, so whatever CI attaches to a role, it never gets more than ECS image pulls, logs, and that environment's secrets
   task_role_boundary_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${local.name}-ecs-task-boundary"
 
-  # ecs-tasks にロールを渡すとき、自分のアカウントの ECS からだけ引き受けさせる (confused deputy 対策)
+  # When passing the role to ecs-tasks, allow only ECS in our own account to assume it (confused deputy protection)
   ecs_tasks_assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -49,7 +49,7 @@ locals {
   })
 }
 
-# ECS エージェントがイメージ取得・ログ送信・シークレット取得に使うロール
+# Role the ECS agent uses to pull images, send logs, and fetch secrets
 resource "aws_iam_role" "task_execution" {
   name                 = "${local.name}-task-execution"
   assume_role_policy   = local.ecs_tasks_assume_role_policy
@@ -78,7 +78,7 @@ resource "aws_iam_role_policy" "task_execution_secrets" {
   })
 }
 
-# アプリ自身のロール。今は AWS の API を呼ばないので権限を付けない
+# The app's own role. It does not call AWS APIs for now, so no permissions are attached
 resource "aws_iam_role" "task" {
   name                 = "${local.name}-task"
   assume_role_policy   = local.ecs_tasks_assume_role_policy

@@ -15,7 +15,7 @@ class ResolveShortLinkSpec extends AnyWordSpec with Matchers with ScalaFutures {
 
   private val link = ShortLink("abcd1234", Url.from("https://www.example.org").toOption.get)
 
-  /** link を登録済みのリポジトリで組み立てる。 */
+  /** Builds it with a repository where link is already registered. */
   private def newUsecase() = {
     val repository = new InMemoryShortLinkRepository()
     repository.saveIfAbsent(link).futureValue
@@ -24,32 +24,32 @@ class ResolveShortLinkSpec extends AnyWordSpec with Matchers with ScalaFutures {
 
   "ResolveShortLink.execute" should {
 
-    "発行済みのコードならリンクを返す" in {
+    "return the link for an issued code" in {
       newUsecase().execute("abcd1234").futureValue shouldBe Some(link)
     }
 
-    "未知のコードなら None" in {
+    "return None for an unknown code" in {
       newUsecase().execute("zzzzzzzz").futureValue shouldBe None
     }
   }
 
   "ResolveShortLink.fromShortUrl" should {
 
-    "発行済みの短縮URLならリンクを返す" in {
+    "return the link for an issued short URL" in {
       newUsecase().fromShortUrl("https://example.com/abcd1234").futureValue shouldBe Right(link)
     }
 
-    "形は正しいが未発行なら NotFound" in {
+    "return NotFound when the form is correct but it was never issued" in {
       newUsecase().fromShortUrl("https://example.com/zzzzzzzz").futureValue shouldBe
         Left(ResolveShortLinkError.NotFound)
     }
 
-    "他ホストの URL なら NotShortUrl" in {
+    "return NotShortUrl for a URL on another host" in {
       newUsecase().fromShortUrl("https://other.example/abcd1234").futureValue shouldBe
         Left(ResolveShortLinkError.NotShortUrl)
     }
 
-    "URL でなければ NotShortUrl" in {
+    "return NotShortUrl for something that is not a URL" in {
       newUsecase().fromShortUrl("abcd1234").futureValue shouldBe
         Left(ResolveShortLinkError.NotShortUrl)
     }

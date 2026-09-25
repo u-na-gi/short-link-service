@@ -17,7 +17,7 @@ export function App() {
   const [state, setState] = useState<State>({ kind: "idle" });
   const [copy, setCopy] = useState<CopyState>("idle");
   const inputRef = useRef<HTMLInputElement>(null);
-  // 貼り付けを続けたとき、遅れて返った古い応答で新しい結果を上書きしないための連番。
+  // Sequence number so a stale response arriving late does not overwrite a newer result when pasting repeatedly.
   const latest = useRef(0);
   const lastSubmitted = useRef("");
   const errorId = useId();
@@ -28,11 +28,11 @@ export function App() {
     const problem = findUrlProblem(url);
     if (problem !== null) {
       const message =
-        problem === "empty" ? "短くしたい URL を貼り付けてください。" : describeUrlProblem(problem);
+        problem === "empty" ? "Paste the URL you want to shorten." : describeUrlProblem(problem);
       setState({ kind: "error", message });
       return;
     }
-    // 同じ URL を貼り直しただけなら、表示中の結果がそのまま答えなので送らない。
+    // If the same URL was just pasted again, the result on screen is already the answer, so do not send.
     if (url === lastSubmitted.current && state.kind === "done") return;
 
     const id = ++latest.current;
@@ -54,10 +54,10 @@ export function App() {
 
   function onChange(next: string) {
     setValue(next);
-    // 送る前から問題が分かるよう、入力のたびに確かめる。空欄は打ち始める前と同じ扱いでエラーにしない。
+    // Check on every input so problems show before sending. An empty field is treated like before typing and is not an error.
     const problem = findUrlProblem(next);
     if (problem !== null && problem !== "empty") {
-      // 送信中なら、遅れて返る応答で今のエラーを上書きしないよう捨てる。
+      // If a request is in flight, discard it so its late response does not overwrite the current error.
       latest.current++;
       setState({ kind: "error", message: describeUrlProblem(problem) });
     } else if (state.kind === "error") {
@@ -66,7 +66,7 @@ export function App() {
   }
 
   function onPaste(_: ClipboardEvent<HTMLInputElement>) {
-    // 貼り付けが入力欄に反映された後の値で送る。途中に貼った場合も、見えている URL をそのまま短縮する。
+    // Send the value after the paste is applied to the input. Even when pasted mid-text, shorten the URL as shown.
     setTimeout(() => {
       if (inputRef.current) void submit(inputRef.current.value);
     }, 0);
@@ -81,7 +81,7 @@ export function App() {
     }
   }
 
-  // 「コピーしました」は確認できれば十分なので、少ししたら元のラベルに戻す。
+  // "Copied" only needs to be seen briefly, so switch back to the original label after a moment.
   useEffect(() => {
     if (copy !== "copied") return;
     const timer = setTimeout(() => setCopy("idle"), 2000);
@@ -93,14 +93,14 @@ export function App() {
 
   return (
     <main className="page">
-      {/* 公開はしているが、あとで消す前提のサービスなので、使う前に分かるよう最初に出す */}
+      {/* The service is public but meant to be removed later, so show this first so people know before using it */}
       <p className="notice" role="note">
-        このサービスは試験的に公開しているもので、予告なく終了します。作った短縮 URL
-        もいつ消えるか分かりません。大切なリンクには使わないでください。
+        This service is an experiment and may end without notice. Short URLs you create may also
+        disappear at any time. Do not use it for important links.
       </p>
       <form className="search" onSubmit={onSubmit} noValidate aria-busy={loading}>
         <label className="visually-hidden" htmlFor="url">
-          短くしたい URL
+          URL to shorten
         </label>
         <input
           ref={inputRef}
@@ -112,7 +112,7 @@ export function App() {
           autoCapitalize="off"
           spellCheck={false}
           autoFocus
-          placeholder="短くしたい URL を貼り付け"
+          placeholder="Paste a URL to shorten"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onPaste={onPaste}
@@ -120,10 +120,10 @@ export function App() {
           aria-describedby={hasError ? errorId : undefined}
         />
         <button className="search-submit" type="submit" disabled={loading}>
-          {loading ? "短縮中…" : "短縮する"}
+          {loading ? "Shortening…" : "Shorten"}
         </button>
       </form>
-      {/* Turnstile が必要と判断したときだけ、ここにチェックが出る */}
+      {/* A check appears here only when Turnstile decides it is needed */}
       <div ref={turnstile.containerRef} className="turnstile" />
 
       <div className="outcome" aria-live="polite">
@@ -133,7 +133,7 @@ export function App() {
           </p>
         )}
         {state.kind === "done" && (
-          <section className="result" key={state.link.code} aria-label="短縮した URL">
+          <section className="result" key={state.link.code} aria-label="Short URL">
             <div className="result-row">
               <a className="result-url" href={state.link.shortUrl} target="_blank" rel="noreferrer">
                 {state.link.shortUrl.replace(/^https?:\/\//, "")}
@@ -143,14 +143,14 @@ export function App() {
                 type="button"
                 onClick={() => void onCopy(state.link.shortUrl)}
               >
-                {copy === "copied" ? "コピーしました" : "コピー"}
+                {copy === "copied" ? "Copied" : "Copy"}
               </button>
             </div>
             <p className="result-original" title={state.link.originalUrl}>
               {state.link.originalUrl}
             </p>
             {copy === "failed" && (
-              <p className="error">コピーできませんでした。URL を選択してコピーしてください。</p>
+              <p className="error">Could not copy. Select the URL and copy it.</p>
             )}
           </section>
         )}

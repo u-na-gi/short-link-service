@@ -1,10 +1,10 @@
-# E2E 専用。make e2e が compose.yaml に重ね、別プロジェクト (short-link-e2e) として起動する。
-# 開発用と同時に動かしても、ポート・インメモリの状態・ビルド成果物が混ざらない。
+# E2E only. make e2e layers this over compose.yaml and starts it as a separate project (short-link-e2e).
+# Even when run alongside the dev stack, ports, in-memory state, and build outputs do not mix.
 #
-# runn → front (Vite) → server (Play) の順に流し、ブラウザと同じ経路で検証する。
+# Requests go runn -> front (Vite) -> server (Play), testing the same path as a browser.
 services:
   server:
-    # 手元の .env で結果が変わらないよう、固定値を渡す
+    # Pass fixed values so the local .env does not change the results
     env_file: !reset []
     environment:
       SHORTENER_BASE_URL: https://example.com
@@ -12,8 +12,8 @@ services:
 
   front:
     ports: !reset []
-    # Vite 経由で Play のヘルスチェックまで届けば、両方が応答できる。
-    # Play の dev モードは最初のリクエストでコンパイルするので、初回は数分かかる
+    # If a request through Vite reaches Play's health check, both are able to respond.
+    # Play's dev mode compiles on the first request, so the first run takes a few minutes
     healthcheck:
       test:
         - CMD
@@ -28,11 +28,11 @@ services:
 
   runn:
     image: ghcr.io/k1low/runn:v1.11.0
-    # 追加の引数 (make e2e E2E_ARGS=--debug) は command として後ろに付く
+    # Extra arguments (make e2e E2E_ARGS=--debug) are appended as command
     entrypoint: ["runn", "run", "/scenarios/*.yml", "--verbose", "--debug-on-failure"]
     environment:
       E2E_BASE_URL: http://front:5173
-      # 自己参照の判定は server の SHORTENER_BASE_URL のホストと突き合わせる
+      # Self-reference is checked against the host of the server's SHORTENER_BASE_URL
       E2E_SELF_URL: https://example.com/abcd1234
     volumes:
       - ${LOCAL_WORKSPACE_FOLDER:-.}/tests/scenarios:/scenarios:ro
@@ -40,8 +40,8 @@ services:
       front:
         condition: service_healthy
 
-# 依存のキャッシュは開発用と共有し、E2E のたびに取り直さないようにする。
-# ビルド成果物 (server-target など) は同時に動く sbt と取り合うので、プロジェクトごとに分けたままにする
+# Share the dependency caches with the dev stack so they are not fetched again on every E2E run.
+# Build outputs (server-target etc.) would be contended by a concurrently running sbt, so keep them per project
 volumes:
   sbt-cache:
     name: short-link-service_sbt-cache

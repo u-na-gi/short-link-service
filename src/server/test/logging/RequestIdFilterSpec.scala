@@ -13,7 +13,7 @@ class RequestIdFilterSpec extends PlaySpec with GuiceOneAppPerTest {
 
   "RequestIdFilter" should {
 
-    "リクエストごとに別の UUID を振って X-Request-Id で返す" in {
+    "assign a different UUID to each request and return it in X-Request-Id" in {
       def requestId() =
         header(RequestId.Header, route(app, FakeRequest(GET, "/api/v1/health")).get).value
 
@@ -23,7 +23,7 @@ class RequestIdFilterSpec extends PlaySpec with GuiceOneAppPerTest {
       first must not be second
     }
 
-    "送られてきた X-Request-Id は使わない" in {
+    "not use an incoming X-Request-Id" in {
       val result = route(
         app,
         FakeRequest(GET, "/api/v1/health").withHeaders(RequestId.Header -> "spoofed")
@@ -32,7 +32,7 @@ class RequestIdFilterSpec extends PlaySpec with GuiceOneAppPerTest {
       header(RequestId.Header, result).value must not be "spoofed"
     }
 
-    "action で例外が起きても、スタックトレースのログとレスポンスに同じ ID が付く" in {
+    "attach the same ID to the stack trace log and the response when the action throws" in {
       given Materializer = app.materializer
       val actionBuilder = app.injector.instanceOf[DefaultActionBuilder]
       val action = actionBuilder { (_: Request[AnyContent]) => throw new RuntimeException("boom") }

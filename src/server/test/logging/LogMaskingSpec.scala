@@ -7,25 +7,25 @@ class LogMaskingSpec extends PlaySpec {
 
   "LogMasking.mask" should {
 
-    "キーを残して値をすべて隠す" in {
+    "keep keys and hide all values" in {
       LogMasking.mask(Json.obj("url" -> "https://example.com/?token=secret", "n" -> 1)) mustBe
         Json.obj("url" -> "***", "n" -> "***")
     }
 
-    "入れ子のオブジェクトや配列の中まで隠す" in {
+    "hide values inside nested objects and arrays" in {
       val json = Json.obj("a" -> Json.obj("b" -> Json.arr("x", Json.obj("c" -> true))))
       LogMasking.mask(json) mustBe
         Json.obj("a" -> Json.obj("b" -> Json.arr("***", Json.obj("c" -> "***"))))
     }
 
-    "null も隠す" in {
+    "hide null too" in {
       LogMasking.mask(Json.obj("a" -> JsNull)) mustBe Json.obj("a" -> "***")
     }
 
-    "revealed のキーは値が文字列・数値・真偽値のときだけ出す" in {
+    "show revealed keys only when the value is a string, number, or boolean" in {
       val json = Json.obj(
         "error" -> "invalid_url",
-        "message" -> "https://example.com/?token=secret は不正です",
+        "message" -> "https://example.com/?token=secret is invalid",
         "code" -> Json.obj("nested" -> "secret")
       )
       LogMasking.mask(json, Set("error", "code")) mustBe Json.obj(
@@ -35,7 +35,7 @@ class LogMaskingSpec extends PlaySpec {
       )
     }
 
-    "urls のキーは部品に分けて出し、入れ子の中でも効く" in {
+    "split urls keys into parts, also when nested" in {
       val json =
         Json.obj("a" -> Json.obj("url" -> "https://example.com/p?token=secret"), "b" -> "x")
       LogMasking.mask(json, urls = Set("url")) mustBe Json.obj(
@@ -51,14 +51,14 @@ class LogMaskingSpec extends PlaySpec {
       )
     }
 
-    "urls のキーでも文字列でなければ隠す" in {
+    "hide urls keys when the value is not a string" in {
       LogMasking.mask(Json.obj("url" -> 1), urls = Set("url")) mustBe Json.obj("url" -> "***")
     }
   }
 
   "LogMasking.urlSummary" should {
 
-    "スキーム・ホスト・パス・クエリのキーを出し、クエリの値は出さない" in {
+    "show scheme, host, path, and query keys, but not query values" in {
       val summary = LogMasking.urlSummary(
         "https://Docs.Example.com/document/d/abc/edit?usp=sharing&token=secret&token=x"
       )
@@ -71,18 +71,18 @@ class LogMaskingSpec extends PlaySpec {
       summary.toString must not include "secret"
     }
 
-    "値の無いクエリパラメータは名前も隠す" in {
+    "hide the name of a query parameter without a value" in {
       val summary = LogMasking.urlSummary("https://example.com/reset?secretToken&lang=ja&other")
       (summary \ "query").as[JsValue] mustBe Json.arr("***", "lang")
       summary.toString must not include "secretToken"
     }
 
-    "既定以外のポートは出し、クエリが無ければ query を出さない" in {
+    "show a non-default port and omit query when there is none" in {
       LogMasking.urlSummary("http://example.com:8080/") mustBe
         Json.obj("scheme" -> "http", "host" -> "example.com", "port" -> 8080, "path" -> "/")
     }
 
-    "ユーザー情報は出さず、フラグメントはあることだけ出す" in {
+    "omit user info and show only that a fragment exists" in {
       val summary = LogMasking.urlSummary("https://user:pass@example.com/#access_token=secret")
       summary mustBe Json.obj(
         "scheme" -> "https",
@@ -93,12 +93,12 @@ class LogMaskingSpec extends PlaySpec {
       summary.toString must (not include "pass" and not include "secret")
     }
 
-    "長いパスは切る" in {
+    "cut long paths" in {
       val path = (LogMasking.urlSummary("https://example.com/" + "a" * 1000) \ "path").as[String]
       path mustBe "/" + "a" * (LogMasking.MaxPathLength - 1) + "..."
     }
 
-    "http / https として読めないものは丸ごと隠す" in {
+    "hide anything that cannot be read as http / https entirely" in {
       LogMasking.urlSummary("javascript:alert('secret')") mustBe JsString("***")
       LogMasking.urlSummary("example.com/?token=secret") mustBe JsString("***")
     }

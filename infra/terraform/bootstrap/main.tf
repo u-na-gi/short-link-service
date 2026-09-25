@@ -1,8 +1,8 @@
-# アカウントに 1 つだけ作る土台。環境 (develop / staging / prod) の tfstate を置く S3 バケット。
+# Foundation created only once per account: the S3 bucket that holds the tfstate of each environment (develop / staging / prod).
 #
-# このスタック自身の state も、このスタックが作るバケットに置く。
-# 最初の 1 回だけは backend "s3" を外してローカルの state で apply し、backend を戻して
-# terraform init -migrate-state でバケットへ移した。作り直すときも同じ手順を踏む。
+# This stack's own state is also stored in the bucket it creates.
+# The very first time, remove backend "s3", apply with local state, restore the backend, and
+# move the state into the bucket with terraform init -migrate-state. Follow the same steps when recreating it.
 
 terraform {
   required_version = ">= 1.16"
@@ -39,8 +39,8 @@ provider "aws" {
   }
 }
 
-# バケット名は全世界で一意でないといけない。アカウント ID を名前に入れると
-# 各環境の backend 設定 (リポジトリにコミットする) にアカウント ID が載るので、乱数で一意にする
+# Bucket names must be globally unique. Putting the account ID in the name would expose it in
+# each environment's backend config (committed to the repository), so use a random suffix for uniqueness
 resource "random_id" "tfstate_suffix" {
   byte_length = 4
 }
@@ -53,7 +53,7 @@ resource "aws_s3_bucket" "tfstate" {
   }
 }
 
-# state を壊したり消したりしたときに戻せるよう、版を残す
+# Keep versions so state can be restored if it is corrupted or deleted
 resource "aws_s3_bucket_versioning" "tfstate" {
   bucket = aws_s3_bucket.tfstate.id
 
@@ -62,7 +62,7 @@ resource "aws_s3_bucket_versioning" "tfstate" {
   }
 }
 
-# 古い版は 90 日で消す。残し続けると state を書くたびに溜まる
+# Delete old versions after 90 days. Otherwise they pile up on every state write
 resource "aws_s3_bucket_lifecycle_configuration" "tfstate" {
   bucket = aws_s3_bucket.tfstate.id
 
@@ -80,7 +80,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "tfstate" {
   depends_on = [aws_s3_bucket_versioning.tfstate]
 }
 
-# state には random_password で作るシークレットも載るので、暗号化と公開の遮断を明示する
+# State also contains secrets created with random_password, so make encryption and public access blocking explicit
 resource "aws_s3_bucket_server_side_encryption_configuration" "tfstate" {
   bucket = aws_s3_bucket.tfstate.id
 
@@ -100,7 +100,7 @@ resource "aws_s3_bucket_public_access_block" "tfstate" {
   restrict_public_buckets = true
 }
 
-# TLS を使わないアクセスを拒否する
+# Deny access without TLS
 data "aws_iam_policy_document" "tfstate" {
   statement {
     sid     = "DenyInsecureTransport"
@@ -132,6 +132,6 @@ resource "aws_s3_bucket_policy" "tfstate" {
 }
 
 output "tfstate_bucket" {
-  description = "各環境の backend \"s3\" の bucket に書く名前"
+  description = "Name to put in bucket of each environment's backend \"s3\""
   value       = aws_s3_bucket.tfstate.bucket
 }

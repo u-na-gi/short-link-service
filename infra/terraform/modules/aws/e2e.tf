@@ -1,8 +1,8 @@
-# E2E (runn) が Cloudflare Access を通るためのサービストークン。手元や CI の E2E はここから読む。
-# Access をかけない環境 (prod) では作らない。
+# Service token for E2E (runn) to pass Cloudflare Access. Local and CI E2E runs read it from here.
+# Not created in environments without Access (prod).
 
 locals {
-  # 変数そのものは sensitive なので、count には null かどうかだけを渡す
+  # The variable itself is sensitive, so pass only whether it is null to count
   e2e_access_enabled = nonsensitive(var.e2e_access_client != null)
 }
 

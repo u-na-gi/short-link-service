@@ -59,7 +59,7 @@ input {
   white-space: nowrap;
 }
 
-/* 入力欄を画面上部 3 分の 1 あたりに置き、結果が下に伸びても入力欄の位置は動かさない。 */
+/* Place the input about one third down the screen, and keep it in place when results grow below it. */
 .page {
   width: min(100% - 32px, 584px);
   margin-inline: auto;
@@ -122,7 +122,7 @@ input {
   outline-offset: 2px;
 }
 
-/* 入力欄と文字の頭をそろえる。 */
+/* Align the text start with the input. */
 .outcome {
   padding-inline: 20px;
   margin-top: 28px;
@@ -134,7 +134,7 @@ input {
   font-size: 14px;
 }
 
-/* ページで唯一目立たせるもの。枠で囲まず、文字の大きさだけで階層を付ける。 */
+/* The only thing on the page that stands out. No border; hierarchy comes from font size alone. */
 .result {
   animation: reveal 180ms ease-out;
 }
@@ -187,12 +187,12 @@ input {
   text-overflow: ellipsis;
 }
 
-/* 短縮の結果が伸びても、復元フォームは結果の下に続けて置く。 */
+/* The resolve form follows below the shorten result, however long it grows. */
 .resolve {
   margin-top: 56px;
 }
 
-/* 元の URL は長いことが多いので、短縮 URL より小さくして折り返す。 */
+/* Original URLs are often long, so make them smaller than the short URL and wrap them. */
 .resolved-url {
   color: var(--link);
   font-size: 18px;
@@ -229,7 +229,7 @@ input {
   }
 }
 
-/* Turnstile のチェック。Cloudflare が必要と判断したときだけ中身が入る */
+/* The Turnstile check. It has content only when Cloudflare decides it is needed */
 .turnstile:empty {
   display: none;
 }
@@ -239,7 +239,7 @@ input {
   margin-top: 12px;
 }
 
-/* サービスを終了する予定の案内。目立たせすぎず、フォームの前に読める位置に置く */
+/* Notice that the service will end. Not too prominent, placed where it can be read before the form */
 .notice {
   margin: 0 0 20px;
   padding: 10px 20px;

@@ -2,76 +2,76 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 概要
+## Overview
 
-短縮 URL サービスの API サーバ。Scala 3.3 + Play Framework 3 (sbt)、JDK 21。Twirl / 静的アセットは削除済みで JSON API 専用。
-要件 (リポジトリルートの `README.md`): 短縮 URL の生成と復元、同一 URL には同一の短縮 URL、永続化不要 (インメモリで可)、パスはランダムな 8 文字。
+API server for the URL shortener. Scala 3.3 + Play Framework 3 (sbt), JDK 21. Twirl / static assets have been removed; JSON API only.
+Requirements (`README.md` at the repository root): shorten and resolve URLs, the same URL gets the same short URL, no persistence needed (in memory is fine), the path is 8 random characters.
 
-## コマンド
+## Commands
 
-このディレクトリ (`src/server/`) で実行する。
-
-```sh
-sbt run                  # 開発サーバ (http://localhost:9000)。make dev でも同じ
-sbt test                 # 全テスト。make test でも同じ
-sbt "testOnly domain.UrlSpec"                    # 1 クラスだけ
-sbt "testOnly domain.UrlSpec -- -z \"部分一致\""  # テスト名で絞る (ScalaTest)
-sbt scalafmtAll          # フォーマット (make fmt)。設定は .scalafmt.conf (dialect scala3, maxColumn 100)
-```
-
-開発用のコンテナ (server と front) と E2E は、リポジトリルート (`/app`) の Makefile から動かす。詳細はルートの `README.md` と `/app/tests/README.md`。
+Run in this directory (`src/server/`).
 
 ```sh
-make up    # compose.yaml で server (sbt run) と front (Vite) を起動。環境変数は root の .env から
-make e2e   # E2E 専用の compose で起動し、runn のシナリオを front 経由で流して片付ける
+sbt run                  # Dev server (http://localhost:9000). Same as make dev
+sbt test                 # All tests. Same as make test
+sbt "testOnly domain.UrlSpec"                    # One class only
+sbt "testOnly domain.UrlSpec -- -z \"substring\""  # Filter by test name (ScalaTest)
+sbt scalafmtAll          # Format (make fmt). Config is .scalafmt.conf (dialect scala3, maxColumn 100)
 ```
 
-ドメインのルールや複雑なアサーションは E2E ではなく Scala 側 (`test/`) に書く方針。
+The dev containers (server and front) and E2E run from the Makefile at the repository root (`/app`). Details in the root `README.md` and `/app/tests/README.md`.
 
-## アーキテクチャ
+```sh
+make up    # Start server (sbt run) and front (Vite) with compose.yaml. Env vars come from the root .env
+make e2e   # Start with the E2E-only compose, run the runn scenarios through front, and clean up
+```
 
-レイヤ分けされたクリーンアーキテクチャ風の構成。依存は外側 → 内側 (`domain`) の一方向。
+Domain rules and complex assertions go on the Scala side (`test/`), not in E2E.
 
-- `domain/` — Play に依存しない中核。
-  - `Url` は検証済み URL の値オブジェクト。コンストラクタは private で `Url.from(raw): Either[Url.Error, Url]` 経由でのみ生成する。okhttp の `HttpUrl` でパース・正規化 (punycode 化、ホスト小文字化) し、http/https 以外のスキーム・認証情報付き URL・2048 文字超を拒否する。
-  - `ShortLinkRepository` / `ShortLinkService` は trait。実装は外側に置く。`ShortLinkService.issue(url)` は一意なコードを振って保存までを担う。`saveIfAbsent` はコード重複 (`CodeTaken`)、URL 登録済み (`UrlExists`)、件数の上限 (`Full`) を判定と保存を不可分にして返す。URL が登録済みなら上限に関係なく既存のリンクを返す。
-  - `PublicBaseUrl` は利用者に見せる自サービスの公開 URL (スキーム + ホスト [+ ポート])。短縮 URL は Host ヘッダではなく必ずこれから組み立てる (本番は Cloudflare Worker と Tunnel 越しで Host が `localhost:9000` になり、偽装もできるため)。
-  - `ServiceHost` は自サービスのホスト名で、`PublicBaseUrl` から導く。自己参照 URL (リダイレクトループ) の拒否に使う。
-  - `PublicBaseUrl.codeOf(raw)` は自サービスの短縮 URL からコードを取り出す。ホスト名だけで判定し (`ServiceHost` と同じ基準)、パスは英数 8 文字の 1 階層だけ。クエリ・フラグメントは無視する。
-- `usecase/` — 業務操作。`CreateShortLink.execute(rawUrl)` は生文字列を受け取り VO 変換まで内側で行い、`Future[Either[CreateShortLinkError, ShortLink]]` を返す。エラーは enum で表現し、例外は使わない。
-  - 同じ URL には同じリンクを返す。`findByUrl` で登録済みなら採番しない。未登録なら `ShortLinkService.issue` に発行を任せ、その `CodeExhausted` / `StorageFull` を usecase のエラーに写す。
-  - `ResolveShortLink.execute(code)` はコードからリンクを引く (リダイレクト用)。`fromShortUrl(raw)` は貼り付けられた短縮 URL を `codeOf` で解釈して引き、`NotShortUrl` / `NotFound` を返す。
-- `service/DefaultShortLinkService` — `ShortLinkService` の実装。`SecureRandom` で英数 8 文字のコードを採番して `saveIfAbsent` し、コードが被ったら最大 10 回まで採番し直す (超えたら `CodeExhausted`)。採番し直しは乱数方式の都合なので usecase ではなくここに置く。テストでは主コンストラクタにコード生成関数 (`test/support/SequenceCodes`) を渡して固定する。
-- `infra/inmemory/InMemoryShortLinkRepository` — コード→リンク、URL→リンクの 2 つの `TrieMap` による実装 (再起動で消える)。書き込みだけ `synchronized`。
-  - 公開の書き込み API でメモリを使い切られないよう、件数に上限を持つ (`shortener.max-links`、環境変数 `SHORTENER_MAX_LINKS`、既定 10 万件)。`TrieMap.size` は O(n) なので、件数は書き込みと同じロックの中でカウンタで数える。上限は `Module` が `LinkCapacity` として検証して渡す (0 以下なら起動を止める)。テストでは主コンストラクタの `maxLinks` (既定は上限なし) を使う。
-- `controllers/` — HTTP の関心事だけ。JSON の形は `Reads` で検証し (`invalid_request`)、業務エラーは usecase の enum を `error` コード (400 `invalid_url` / `self_reference` / `not_short_url`、404 `not_found`、500 `code_generation_failed`、503 `storage_full`) にマップする。作成と復元は同じ形 (`code` / `shortUrl` / `originalUrl`) を返す。
-  - エラーの body は `{"error": コード}` だけ。`invalid_url` だけは `reason` (`empty` / `malformed` / `unsupported_scheme` / `credentials` / `too_long`、フロントの `UrlProblem` と同じ値) を付ける。入力値・上限値・検証の詳細・内部の事情は返さない。利用者向けの日本語の文言はフロント (`src/front/src/api.ts`) がコードから組み立てる。
-  - domain / usecase のエラーは enum で返し、文言を持たせない。`PublicBaseUrl.from` のエラーも `PublicBaseUrl.Error` で、`Module` が英語のメッセージにして起動を止める (パース失敗は元の例外を cause に付ける)。
-- `app/Module.scala` — Guice のバインディングを集約 (trait → 実装)。`shortener.base-url` 設定 (`conf/application.conf`、環境変数 `SHORTENER_BASE_URL` で上書き可。既定はフロントの Vite `http://localhost:5173`) を検証して `PublicBaseUrl` / `ServiceHost` として `@Provides` し、usecase が Play の `Configuration` に依存しないようにしている。
+## Architecture
 
-### ログ
+Layered, clean-architecture-like structure. Dependencies go one way: outer → inner (`domain`).
 
-`conf/logback.xml` で、開発でも本番でも JSON を 1 行ずつ標準出力に出す (logstash-logback-encoder)。手元では `make logs-server` で jq を通して読む。
+- `domain/` — The core, with no dependency on Play.
+  - `Url` is a value object for a validated URL. The constructor is private; create it only through `Url.from(raw): Either[Url.Error, Url]`. It parses and normalizes with okhttp's `HttpUrl` (punycode, lowercase host) and rejects schemes other than http/https, URLs with credentials, and URLs over 2048 characters.
+  - `ShortLinkRepository` / `ShortLinkService` are traits. Implementations live outside. `ShortLinkService.issue(url)` assigns a unique code and saves it. `saveIfAbsent` makes the check and the save atomic, and returns duplicate code (`CodeTaken`), URL already registered (`UrlExists`), or count limit reached (`Full`). If the URL is already registered, it returns the existing link regardless of the limit.
+  - `PublicBaseUrl` is the public URL of this service shown to users (scheme + host [+ port]). Short URLs are always built from it, never from the Host header (in production, requests come through the Cloudflare Worker and Tunnel so Host is `localhost:9000`, and Host can also be spoofed).
+  - `ServiceHost` is this service's host name, derived from `PublicBaseUrl`. Used to reject self-referencing URLs (redirect loops).
+  - `PublicBaseUrl.codeOf(raw)` extracts the code from a short URL of this service. It checks only the host name (same rule as `ServiceHost`), and the path must be a single segment of 8 alphanumeric characters. Query and fragment are ignored.
+- `usecase/` — Business operations. `CreateShortLink.execute(rawUrl)` takes the raw string, does the conversion to a value object inside, and returns `Future[Either[CreateShortLinkError, ShortLink]]`. Errors are enums; no exceptions.
+  - The same URL gets the same link. If `findByUrl` finds it registered, no code is assigned. Otherwise it leaves issuing to `ShortLinkService.issue` and maps its `CodeExhausted` / `StorageFull` to usecase errors.
+  - `ResolveShortLink.execute(code)` looks up a link by code (for redirects). `fromShortUrl(raw)` interprets a pasted short URL with `codeOf`, looks it up, and returns `NotShortUrl` / `NotFound`.
+- `service/DefaultShortLinkService` — Implementation of `ShortLinkService`. Generates an 8-character alphanumeric code with `SecureRandom`, calls `saveIfAbsent`, and on a code collision retries up to 10 times (`CodeExhausted` if exceeded). Retrying is a consequence of random codes, so it lives here, not in the usecase. Tests pin the codes by passing a code generator (`test/support/SequenceCodes`) to the primary constructor.
+- `infra/inmemory/InMemoryShortLinkRepository` — Implementation with two `TrieMap`s, code → link and URL → link (lost on restart). Only writes are `synchronized`.
+  - It has a count limit so the public write API cannot use up memory (`shortener.max-links`, env var `SHORTENER_MAX_LINKS`, default 100,000). `TrieMap.size` is O(n), so the count is kept in a counter inside the same lock as writes. `Module` validates the limit and passes it as `LinkCapacity` (startup stops if it is 0 or less). Tests use `maxLinks` on the primary constructor (default: no limit).
+- `controllers/` — HTTP concerns only. The JSON shape is validated with `Reads` (`invalid_request`), and business errors map from usecase enums to `error` codes (400 `invalid_url` / `self_reference` / `not_short_url`, 404 `not_found`, 500 `code_generation_failed`, 503 `storage_full`). Create and resolve return the same shape (`code` / `shortUrl` / `originalUrl`).
+  - The error body is only `{"error": code}`. Only `invalid_url` adds `reason` (`empty` / `malformed` / `unsupported_scheme` / `credentials` / `too_long`, same values as the front end's `UrlProblem`). Do not return input values, limits, validation details, or internal details. User-facing messages are built from the code by the front end (`src/front/src/api.ts`).
+  - domain / usecase errors are returned as enums without messages. `PublicBaseUrl.from` errors are also `PublicBaseUrl.Error`; `Module` turns them into English messages and stops startup (a parse failure keeps the original exception as the cause).
+- `app/Module.scala` — Collects the Guice bindings (trait → implementation). It validates the `shortener.base-url` setting (`conf/application.conf`, can be overridden with env var `SHORTENER_BASE_URL`; default is the front end's Vite `http://localhost:5173`) and `@Provides` it as `PublicBaseUrl` / `ServiceHost`, so usecases do not depend on Play's `Configuration`.
 
-- `logging/RequestIdFilter` — 一番外側のフィルタ。リクエストごとに UUID を振って属性 (`RequestId.Key`) に入れ、レスポンスの `X-Request-Id` で返す。Play の `request.id` は再起動で 1 から振り直す連番なので使わない。送られてきた `X-Request-Id` は偽装できるので使わない。action の例外はここで ID 付きのリクエストとして ErrorHandler に渡す (Play に任せると属性の無い元のリクエストで呼ばれ、ID が付かない)。
-- `logging/AccessLogFilter` — 1 リクエスト 1 行のアクセスログ (ロガー名 `access`)。method・host (`X-Forwarded-Host` 優先)・path・status・所要時間・requestId と、body とクエリを出す。Play の既定のフィルタより外側に置き、弾かれたリクエストも残す。ヘルスチェックは DEBUG。
-- body とクエリは `logging/LogMasking` でキーだけ残して値を隠す。元 URL のクエリにトークンが入りうるので、出してよいキーだけ列挙する方式 (レスポンスの `error` と `code` だけ値を出す)。URL の項目 (`url` / `shortUrl` / `originalUrl`、`AccessLogFilter.UrlKeys`) は何が送られたか追えるよう、`LogMasking.urlSummary` でスキーム・ホスト・ポート・パス (256 文字で切る)・クエリのキーに分けて出す (クエリの値・フラグメント・ユーザー情報は出さない。値の無いパラメータ `?token` は名前も隠す)。`logback.xml` の `MaskingJsonGeneratorDecorator` は、スキーム付きの URL に見える文字列を項目名によらず隠す保険。
-- `controllers/ErrorHandler` — Play 自身のエラーも `{"error"}` の JSON で返す (Play のメッセージには body の断片が入りうるので DEBUG ログにだけ出す)。未処理の例外はスタックトレース付きで ERROR に出し、利用者には `internal_error` だけ返す。例外にならない 500 (`CodeExhausted`) は controller で ERROR を出す。
-- アクセスログ以外のログにも `logging.RequestLog.marker(request)` で requestId を付ける。自動では付かない (Future でスレッドをまたぐので MDC は使っていない)。付け忘れるとどのリクエストのログか追えなくなる。
-- root は WARN なので、自前のロガーは `logback.xml` にロガー名を足さないと INFO が出ない (今は `access` と `controllers`)。
+### Logging
 
-ルーティングは `conf/routes`。`GET /` と `GET /api/v1/health` はヘルスチェック (フロント経由だと `/` は index.html になるので、E2E は後者を見る)、`POST /api/v1/links` が短縮リンク作成 (Cookie セッションを持たないので `nocsrf`)、`GET /api/v1/links/resolve?shortUrl=` が短縮 URL からの復元、末尾の `GET /:code` が 302 で元URLへリダイレクト (未知なら 404 `not_found`)。Play の `Redirect` は既定が 303 なので `FOUND` を明示している。
+`conf/logback.xml` writes one JSON line per event to stdout in both dev and production (logstash-logback-encoder). Locally, read it through jq with `make logs-server`.
 
-usecase のテストは DI コンテナを使わず `new` で組み立て、`DefaultShortLinkService` に `SequenceCodes` を渡してコードを固定する (`test/usecase/CreateShortLinkSpec.scala`)。採番し直しのテストは `test/service/DefaultShortLinkServiceSpec.scala`。
+- `logging/RequestIdFilter` — The outermost filter. Assigns a UUID to each request, stores it in an attribute (`RequestId.Key`), and returns it in the `X-Request-Id` response header. Play's `request.id` is a counter that restarts from 1 on restart, so it is not used. An incoming `X-Request-Id` can be spoofed, so it is not used either. Action exceptions are passed to ErrorHandler here with the request that has the ID (if left to Play, it is called with the original request without the attribute, and no ID is attached).
+- `logging/AccessLogFilter` — Access log, one line per request (logger name `access`). Writes method, host (`X-Forwarded-Host` first), path, status, elapsed time, requestId, and the body and query. It sits outside Play's default filters so rejected requests are also logged. Health checks are DEBUG.
+- `logging/LogMasking` keeps only the keys of the body and query and hides the values. The original URL's query may contain tokens, so it lists only the keys whose values may be shown (only `error` and `code` in responses). URL fields (`url` / `shortUrl` / `originalUrl`, `AccessLogFilter.UrlKeys`) are split by `LogMasking.urlSummary` into scheme, host, port, path (cut at 256 characters), and query keys, so we can trace what was sent (query values, fragment, and user info are not written; the name of a parameter without a value, `?token`, is hidden too). `MaskingJsonGeneratorDecorator` in `logback.xml` is a safety net that hides any string that looks like a URL with a scheme, whatever the field name.
+- `controllers/ErrorHandler` — Returns Play's own errors as `{"error"}` JSON too (Play's messages may contain fragments of the body, so they go only to the DEBUG log). Unhandled exceptions are logged at ERROR with stack traces, and users get only `internal_error`. A 500 that is not an exception (`CodeExhausted`) is logged at ERROR by the controller.
+- Logs other than the access log also get the requestId via `logging.RequestLog.marker(request)`. It is not attached automatically (Futures cross threads, so MDC is not used). If you forget it, you cannot tell which request a log belongs to.
+- root is WARN, so your own loggers do not output INFO unless you add the logger name to `logback.xml` (currently `access` and `controllers`).
 
-`conf/application.conf` の `play.filters.hosts.allowed` には、環境変数 `PLAY_EXTRA_ALLOWED_HOST` で許可するホストを 1 つ足せる。compose では Vite のプロキシが Host をプロキシ先 (`server:9000`) に書き換えるので、`compose.yaml` で `server` を渡している。
+Routing is in `conf/routes`. `GET /` and `GET /api/v1/health` are health checks (through the front end, `/` is index.html, so E2E uses the latter), `POST /api/v1/links` creates a short link (`nocsrf` because there is no cookie session), `GET /api/v1/links/resolve?shortUrl=` resolves a short URL, and the last `GET /:code` redirects to the original URL with 302 (404 `not_found` if unknown). Play's `Redirect` defaults to 303, so `FOUND` is set explicitly.
 
-## 運用の前提
+Usecase tests do not use the DI container; they build with `new` and pass `SequenceCodes` to `DefaultShortLinkService` to pin codes (`test/usecase/CreateShortLinkSpec.scala`). Retry tests are in `test/service/DefaultShortLinkServiceSpec.scala`.
 
-リンクはインメモリなので、常に 1 プロセスで動かす前提。複数台に振り分けると、作ったリンクが別の台で 404 になり、同じ URL に別コードが返る。本番は ECS on Fargate の 1 タスク (デプロイも新旧を並べない。構成はルートの `docs/production-architecture.md`)。スケールするときは `ShortLinkRepository` を共有ストア (DynamoDB など) の実装に差し替える。
+`play.filters.hosts.allowed` in `conf/application.conf` can take one extra host via env var `PLAY_EXTRA_ALLOWED_HOST`. In compose, the Vite proxy rewrites Host to the proxy target (`server:9000`), so `compose.yaml` passes `server`.
 
-## 規約
+## Operational assumptions
 
-- コメント・ドキュメントは日本語。コメントは「なぜそうするか」を書く。
-- サーバのログのメッセージは英語 (例外があれば stack trace ごと出す)。利用者に見せる文言は API では返さず、フロントが日本語で持つ。
-- `.g8/` は Play の giter8 scaffold テンプレートで、アプリのコードではない。
+Links are in memory, so it must always run as a single process. With multiple instances behind a load balancer, a created link returns 404 on another instance, and the same URL gets a different code. Production is one ECS on Fargate task (deploys do not run old and new side by side; see `docs/production-architecture.md` at the root). To scale, replace `ShortLinkRepository` with an implementation on a shared store (DynamoDB etc.).
+
+## Conventions
+
+- Comments and documents are in English. Comments explain "why".
+- Server log messages are in English (include the stack trace for exceptions). User-facing messages are not returned by the API; the front end holds them.
+- `.g8/` is Play's giter8 scaffold template, not app code.

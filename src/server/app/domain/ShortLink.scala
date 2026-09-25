@@ -1,4 +1,4 @@
 package domain
 
-/** 発行済みの短縮リンク。`code` は短縮URLのパス部分にあたる。 */
+/** An issued short link. `code` is the path part of the short URL. */
 final case class ShortLink(code: String, url: Url)
