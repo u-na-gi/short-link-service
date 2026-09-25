@@ -108,6 +108,12 @@ RUN mkdir -p /home/${USERNAME}/.config/gh /home/${USERNAME}/.aws
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
 
+# --- Antigravity CLI (agy) ----------------------------------------------------
+# Google の公式インストーラ。~/.local/bin/agy に入り、以後は実行中に自分で更新する。
+# 認証と設定は ~/.gemini (compose.yaml の named volume) に残る
+RUN mkdir -p /home/${USERNAME}/.gemini \
+    && curl -fsSL https://antigravity.google/cli/install.sh | bash
+
 RUN printf '\n# custom aliases\nalias ccl='\''claude --dangerously-skip-permissions'\''\n' \
         >> /home/${USERNAME}/.bashrc
 

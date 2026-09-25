@@ -3,9 +3,10 @@ name: ci
 
 on:
   pull_request:
-    # Markdown だけの PR では流さない (検査する対象が変わらない)
+    # Markdown と devcontainer だけの PR では流さない (検査する対象が変わらない)
     paths-ignore:
       - "**.md"
+      - ".devcontainer/**"
   workflow_call:
 
 permissions:

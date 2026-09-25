@@ -43,9 +43,14 @@ services:
       # CLAUDE_CONFIG_DIR を向けると .claude.json もこの中に置かれる
       - claude-config:/home/dev/.claude
 
+      # ---- Antigravity CLI (agy) の認証と設定 ----
+      # Claude Code と同じく named volume に置き、コンテナを作り直してもログインし直さない
+      - gemini-config:/home/dev/.gemini
+
 volumes:
   sbt-cache:
   ivy2-cache:
   coursier-cache:
   claude-config:
   aqua-cache:
+  gemini-config:
