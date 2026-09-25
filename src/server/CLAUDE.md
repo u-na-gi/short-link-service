@@ -55,7 +55,7 @@ make e2e   # E2E 専用の compose で起動し、runn のシナリオを front 
 
 - `logging/RequestIdFilter` — 一番外側のフィルタ。リクエストごとに UUID を振って属性 (`RequestId.Key`) に入れ、レスポンスの `X-Request-Id` で返す。Play の `request.id` は再起動で 1 から振り直す連番なので使わない。送られてきた `X-Request-Id` は偽装できるので使わない。action の例外はここで ID 付きのリクエストとして ErrorHandler に渡す (Play に任せると属性の無い元のリクエストで呼ばれ、ID が付かない)。
 - `logging/AccessLogFilter` — 1 リクエスト 1 行のアクセスログ (ロガー名 `access`)。method・host (`X-Forwarded-Host` 優先)・path・status・所要時間・requestId と、body とクエリを出す。Play の既定のフィルタより外側に置き、弾かれたリクエストも残す。ヘルスチェックは DEBUG。
-- body とクエリは `logging/LogMasking` でキーだけ残して値を隠す。元 URL のクエリにトークンが入りうるので、出してよいキーだけ列挙する方式 (レスポンスの `error` と `code` だけ値を出す)。`logback.xml` の `MaskingJsonGeneratorDecorator` は `url` / `shortUrl` / `originalUrl` を隠す保険。
+- body とクエリは `logging/LogMasking` でキーだけ残して値を隠す。元 URL のクエリにトークンが入りうるので、出してよいキーだけ列挙する方式 (レスポンスの `error` と `code` だけ値を出す)。URL の項目 (`url` / `shortUrl` / `originalUrl`、`AccessLogFilter.UrlKeys`) は何が送られたか追えるよう、`LogMasking.urlSummary` でスキーム・ホスト・ポート・パス (256 文字で切る)・クエリのキーに分けて出す (クエリの値・フラグメント・ユーザー情報は出さない。値の無いパラメータ `?token` は名前も隠す)。`logback.xml` の `MaskingJsonGeneratorDecorator` は、スキーム付きの URL に見える文字列を項目名によらず隠す保険。
 - `controllers/ErrorHandler` — Play 自身のエラーも `{"error"}` の JSON で返す (Play のメッセージには body の断片が入りうるので DEBUG ログにだけ出す)。未処理の例外はスタックトレース付きで ERROR に出し、利用者には `internal_error` だけ返す。例外にならない 500 (`CodeExhausted`) は controller で ERROR を出す。
 - アクセスログ以外のログにも `logging.RequestLog.marker(request)` で requestId を付ける。自動では付かない (Future でスレッドをまたぐので MDC は使っていない)。付け忘れるとどのリクエストのログか追えなくなる。
 - root は WARN なので、自前のロガーは `logback.xml` にロガー名を足さないと INFO が出ない (今は `access` と `controllers`)。

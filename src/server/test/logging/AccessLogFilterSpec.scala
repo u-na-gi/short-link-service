@@ -16,7 +16,7 @@ class AccessLogFilterSpec extends PlaySpec with GuiceOneAppPerTest {
 
   "AccessLogFilter" should {
 
-    "request body は値を隠し、レスポンスは error と code だけ値を出す" in {
+    "URL は部品に分けてクエリの値だけ隠し、レスポンスは error と code も値を出す" in {
       val (result, logs) = LogCapture.capture("access") {
         val result = route(
           app,
@@ -35,10 +35,19 @@ class AccessLogFilterSpec extends PlaySpec with GuiceOneAppPerTest {
       (log \ "host").as[String] mustBe "short.example"
       (log \ "path").as[String] mustBe "/api/v1/links"
       (log \ "status").as[Int] mustBe CREATED
-      (log \ "requestBody").as[JsValue] mustBe Json.obj("url" -> "***")
+      val original =
+        Json.obj(
+          "scheme" -> "https",
+          "host" -> "example.com",
+          "path" -> "/",
+          "query" -> Json.arr("token")
+        )
+      (log \ "requestBody").as[JsValue] mustBe Json.obj("url" -> original)
       (log \ "responseBody" \ "code").as[String] must have length 8
-      (log \ "responseBody" \ "originalUrl").as[String] mustBe "***"
-      (log \ "responseBody" \ "shortUrl").as[String] mustBe "***"
+      (log \ "responseBody" \ "originalUrl").as[JsValue] mustBe original
+      // テストの shortener.base-url は既定の http://localhost:5173
+      (log \ "responseBody" \ "shortUrl" \ "host").as[String] mustBe "localhost"
+      (log \ "responseBody" \ "shortUrl" \ "port").as[Int] mustBe 5173
       log.toString must not include "secret"
     }
 
@@ -46,15 +55,26 @@ class AccessLogFilterSpec extends PlaySpec with GuiceOneAppPerTest {
       val logs = captureAccessLog {
         val result = route(
           app,
-          FakeRequest(GET, "/api/v1/links/resolve?shortUrl=https%3A%2F%2Fother.example%2Fsecret00")
+          FakeRequest(
+            GET,
+            "/api/v1/links/resolve?shortUrl=https%3A%2F%2Fother.example%2Fabcd1234%3Fk%3Dsecret00&extra=secret01"
+          )
         ).get
         status(result) mustBe BAD_REQUEST
       }
 
       val log = logs.head
-      (log \ "query").as[JsValue] mustBe Json.obj("shortUrl" -> "***")
+      (log \ "query").as[JsValue] mustBe Json.obj(
+        "shortUrl" -> Json.obj(
+          "scheme" -> "https",
+          "host" -> "other.example",
+          "path" -> "/abcd1234",
+          "query" -> Json.arr("k")
+        ),
+        "extra" -> "***"
+      )
       (log \ "responseBody" \ "error").as[String] mustBe "not_short_url"
-      log.toString must not include "secret00"
+      log.toString must (not include "secret00" and not include "secret01")
     }
 
     "JSON として読めない body は中身を出さずサイズだけ出す" in {
@@ -82,20 +102,21 @@ class AccessLogFilterSpec extends PlaySpec with GuiceOneAppPerTest {
       logs mustBe empty
     }
 
-    "URL を持つ項目をそのままログに渡しても、logback.xml の保険で隠れる" in {
+    "URL をそのままログに渡しても、logback.xml の保険で項目名によらず隠れる" in {
       val logs = captureAccessLog {
         LoggerFactory
           .getLogger("access")
           .info(
             Markers.append(
               "nested",
-              java.util.Map.of("originalUrl", "https://example.com/?token=secret")
+              java.util.Map.of("anything", "https://example.com/?token=secret")
             ),
-            "うっかり"
+            "redirect to https://example.com/?token=secret done"
           )
       }
 
-      (logs.head \ "nested" \ "originalUrl").as[String] mustBe "***"
+      (logs.head \ "nested" \ "anything").as[String] mustBe "***"
+      (logs.head \ "message").as[String] mustBe "redirect to *** done"
     }
   }
 }

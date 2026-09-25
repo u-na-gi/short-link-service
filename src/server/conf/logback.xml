@@ -17,12 +17,12 @@
       <!-- Play が logback の context に入れる application.home が全行に付くので外す -->
       <includeContext>false</includeContext>
       <!-- 値を隠すのは logging.LogMasking が担う (出してよいキーだけ列挙する方式)。
-           ここ (9 系では jsonGeneratorDecorator ではなく decorator) は、URL を持つ項目をうっかりそのままログに渡したときの保険。どの階層にあっても隠す。 -->
+           ここ (9 系では jsonGeneratorDecorator ではなく decorator) は、URL をうっかりそのままログに渡したときの保険。
+           スキーム付きの URL (xxx://...) に見える文字列は、項目名や階層によらず、メッセージの中でも隠す。
+           項目名 (url など) で隠すと、LogMasking が部品 (ホストやパス) に分けて出す URL まで丸ごと隠れるため、値で見る。 -->
       <decorator class="MaskingJsonGeneratorDecorator">
         <defaultMask>***</defaultMask>
-        <path>url</path>
-        <path>shortUrl</path>
-        <path>originalUrl</path>
+        <value>(?i)[a-z][a-z0-9+.-]*://\S*</value>
       </decorator>
     </encoder>
   </appender>

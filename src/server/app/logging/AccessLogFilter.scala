@@ -14,7 +14,7 @@ import scala.util.Try
 /** 1 リクエストにつき 1 行のアクセスログを出す。Play には標準のアクセスログが無いので自前で持つ。
   *
   * body とクエリは `LogMasking` でキーだけ残して値を隠す。レスポンスの `error` (固定のエラーコード) と `code` (どうせパスに出る短縮コード)
-  * だけは、何が起きたか追えるよう値を出す。
+  * だけは、何が起きたか追えるよう値を出す。URL の項目 (`UrlKeys`) は、クエリの値だけ隠して部品に分けて出す。
   *
   * 例外で終わったリクエストも 1 行出して、例外はそのまま上へ投げ直す (スタックトレースは ErrorHandler が出す)。
   */
@@ -58,7 +58,11 @@ class AccessLogFilter @Inject() ()(using ExecutionContext) extends EssentialFilt
     fields.put("path", request.path)
     if (request.queryString.nonEmpty) {
       val query = new java.util.LinkedHashMap[String, AnyRef]()
-      request.queryString.keys.foreach(key => query.put(key, LogMasking.Mask))
+      request.queryString.foreach {
+        case (key, Seq(value)) if AccessLogFilter.UrlKeys(key) =>
+          query.put(key, LogMasking.toJava(LogMasking.urlSummary(value)))
+        case (key, _) => query.put(key, LogMasking.Mask)
+      }
       fields.put("query", query)
     }
     fields.put("status", Int.box(status))
@@ -82,7 +86,9 @@ class AccessLogFilter @Inject() ()(using ExecutionContext) extends EssentialFilt
       case HttpEntity.Strict(data, contentType) if isJson(contentType) && data.nonEmpty =>
         Try(Json.parse(data.toArray)).toOption
           .map(json =>
-            LogMasking.toJava(LogMasking.mask(json, AccessLogFilter.RevealedResponseKeys))
+            LogMasking.toJava(
+              LogMasking.mask(json, AccessLogFilter.RevealedResponseKeys, AccessLogFilter.UrlKeys)
+            )
           )
       case _ => None
     }
@@ -105,7 +111,7 @@ class AccessLogFilter @Inject() ()(using ExecutionContext) extends EssentialFilt
       else
         Some(
           Try(Json.parse(bytes.toArray)).toOption
-            .map(json => LogMasking.toJava(LogMasking.mask(json)))
+            .map(json => LogMasking.toJava(LogMasking.mask(json, urls = AccessLogFilter.UrlKeys)))
             .getOrElse(s"<$total bytes, not valid JSON>")
         )
   }
@@ -114,6 +120,9 @@ class AccessLogFilter @Inject() ()(using ExecutionContext) extends EssentialFilt
 object AccessLogFilter {
   val HealthCheckPaths: Set[String] = Set("/", "/api/v1/health")
   val RevealedResponseKeys: Set[String] = Set("error", "code")
+
+  /** 作成の body の `url`、復元のクエリの `shortUrl`、レスポンスの `shortUrl` / `originalUrl` */
+  val UrlKeys: Set[String] = Set("url", "shortUrl", "originalUrl")
 
   /** URL は 2048 文字までなので、正常な body はこれに収まる */
   val MaxCapturedBytes = 8 * 1024
