@@ -21,6 +21,7 @@ This document describes the prerequisites for running this service in production
   - [Suspending When Unused](#suspending-when-unused)
   - [Tearing Down Environments (Destroy)](#tearing-down-environments-destroy)
   - [Credentials](#credentials)
+  - [What You Need to Deploy](#what-you-need-to-deploy)
 
 ---
 
@@ -198,3 +199,35 @@ Follow the sequence strictly. If `cloudflared` remains connected, Tunnel cannot 
 | Allowed emails for Access | `TF_VAR_access_allowed_email` in `infra/.envrc.local` | Access for develop / staging |
 
 When Cloudflare token permissions change, it may take a few minutes to take effect. Since the repository is public, never commit account IDs, emails, or tokens (also detected by CI gitleaks).
+
+### What You Need to Deploy
+
+The secrets live only in `infra/.envrc.local` (gitignored) and in GitHub Environment secrets. Copy [`infra/.envrc.local.example`](../infra/.envrc.local.example) to `infra/.envrc.local` and fill it in.
+
+**Accounts**
+
+- AWS: an IAM Identity Center user with `AdministratorAccess`, set up as the SSO profile `short-link-develop` in region `ap-northeast-1` (`infra/.envrc` selects it). Log in with `aws sso login --profile short-link-develop`.
+- Cloudflare: a zone for the hostnames (`u-na-gi.com` here), and Zero Trust enabled with a team (needed for Access; the free plan is enough).
+- GitHub: `gh auth login`. `infra/terraform/github` reads the token with `GITHUB_TOKEN=$(gh auth token)`.
+
+**Cloudflare API tokens**
+
+Create them as user API tokens (My Profile > API Tokens > Custom token). Scope the account permissions to your account and the zone permissions to your zone.
+
+| Token | Where it goes | Account permissions | Zone permissions |
+| --- | --- | --- | --- |
+| Local / CI deploy | `CLOUDFLARE_API_TOKEN` and `TF_VAR_ci_cloudflare_deploy_token` | Connectivity Directory:Admin, Cloudflare Tunnel:Edit, Workers Scripts:Edit, Workers Builds Configuration:Edit, Workers Observability:Edit, Workers Agents Configuration:Edit, Turnstile:Edit, Access: Apps and Policies:Edit, Access: Service Tokens:Edit, Access: Organizations, Identity Providers, and Groups:Read, Account Settings:Read | Workers Routes:Edit, DNS:Edit |
+| CI plan | `TF_VAR_ci_cloudflare_plan_token` | The same groups as above but `:Read`, except Cloudflare Tunnel:Edit (the data source that reads the Tunnel token needs Edit even during plan) | Workers Routes:Read, DNS:Read |
+
+Both also get the user permissions Memberships:Read and User Details:Read. These are the permissions the tokens had while the service was running; anything beyond them (R2, KV, Pages, Containers, ...) is not needed.
+
+**Values to replace when recreating**
+
+These are written in the code, not in secrets. They change when the infrastructure is recreated or when someone else deploys it.
+
+| Value | Where | Why it changes |
+| --- | --- | --- |
+| State bucket name `short-link-service-tfstate-0b102b6e` | `backend "s3"` in `infra/terraform/{bootstrap,shared,github,envs/*}`, `terraform_remote_state` in `infra/terraform/github/main.tf`, `tfstate_bucket` in `infra/terraform/shared/ci.tf`, the `tfstate` plugin URLs in `infra/ecspresso/ecspresso.yml` | `bootstrap` adds a random suffix, so a new bucket gets a new name |
+| VPC Service IDs | `service_id` in `src/front/wrangler.jsonc` (per env) | New IDs on every create. Copy the `vpc_service_id` output of `infra/terraform/envs/<env>`; `make deploy-front` refuses to deploy while they differ |
+| Hostnames (`s-dev` / `s-stg` / `s.u-na-gi.com`) | `hostname` in `infra/terraform/envs/<env>/main.tf`, `routes` in `src/front/wrangler.jsonc` | Only when deploying to another zone |
+| GitHub owner and repository | `owner` / `username` in `infra/terraform/github/main.tf`, `github_oidc_sub_prefix` in `infra/terraform/shared/ci.tf` (uses the numeric owner and repository IDs) | Only when deploying from another repository |
