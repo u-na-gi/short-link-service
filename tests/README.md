@@ -28,11 +28,11 @@ End-to-end (E2E) tests that send HTTP requests externally to running services (f
 
 Rather than covering all patterns in E2E, this repository clearly separates responsibilities across testing layers.
 
-| Test Layer | Location | Tool | Primary Scope |
-| --- | --- | --- | --- |
+| Test Layer                   | Location           | Tool      | Primary Scope                                                                                                                                                                                                                |
+| ---------------------------- | ------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Unit / Integration Tests** | `src/server/test/` | ScalaTest | Starts application in-process, thoroughly testing boundary values and internal logic such as domain validation rules, URL normalization, routing, JSON serialization/deserialization, and code allocation collision retries. |
-| **Frontend Unit Tests** | `src/front/` | Bun Test | Pre-submission lightweight URL validation (`url.test.ts`). |
-| **E2E Scenario Tests** | Here (`tests/`) | runn | Verifies integrated behavior, connectivity, and routing from an external client perspective against running frontend (Vite reverse proxy) and backend (Play Framework) processes. |
+| **Frontend Unit Tests**      | `src/front/`       | Bun Test  | Pre-submission lightweight URL validation (`url.test.ts`).                                                                                                                                                                   |
+| **E2E Scenario Tests**       | Here (`tests/`)    | runn      | Verifies integrated behavior, connectivity, and routing from an external client perspective against running frontend (Vite reverse proxy) and backend (Play Framework) processes.                                            |
 
 > [!NOTE]
 > The goal of E2E tests is not duplicate checking of detailed business rules, but guaranteeing that "each component interacts correctly, accepts requests, and responds per specifications in actual execution."
@@ -181,13 +181,13 @@ YAML files in `tests/scenarios/` and their test coverage (currently 4 scenarios,
 
 Environment variables referenced in scenarios, injected by the `runn` service in `compose.e2e.yaml`:
 
-| Environment Variable | Default Value | Value in Compose | Description |
-| --- | --- | --- | --- |
-| `E2E_BASE_URL` | `http://localhost:9000` | `http://front:5173` | Target base URL. Via Vite proxy in Compose. |
-| `E2E_SELF_URL` | `http://localhost:9000/abcd1234` | `https://example.com/abcd1234` | Dummy URL for verifying self-reference errors. Hostname must match API server's `SHORTENER_BASE_URL`. |
-| `E2E_UNKNOWN_SHORT_URL` | `https://example.com/zzzzzzzz` | `https://example.com/zzzzzzzz` | URL for verifying resolution of nonexistent short URLs. |
-| `CF_ACCESS_CLIENT_ID` | (Empty) | (Empty) | Cloudflare Access service token. Passed from SSM by `make e2e-remote`. Sent empty and ignored locally. |
-| `CF_ACCESS_CLIENT_SECRET` | (Empty) | (Empty) | Secret for the above. |
+| Environment Variable      | Default Value                    | Value in Compose               | Description                                                                                            |
+| ------------------------- | -------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `E2E_BASE_URL`            | `http://localhost:9000`          | `http://front:5173`            | Target base URL. Via Vite proxy in Compose.                                                            |
+| `E2E_SELF_URL`            | `http://localhost:9000/abcd1234` | `https://example.com/abcd1234` | Dummy URL for verifying self-reference errors. Hostname must match API server's `SHORTENER_BASE_URL`.  |
+| `E2E_UNKNOWN_SHORT_URL`   | `https://example.com/zzzzzzzz`   | `https://example.com/zzzzzzzz` | URL for verifying resolution of nonexistent short URLs.                                                |
+| `CF_ACCESS_CLIENT_ID`     | (Empty)                          | (Empty)                        | Cloudflare Access service token. Passed from SSM by `make e2e-remote`. Sent empty and ignored locally. |
+| `CF_ACCESS_CLIENT_SECRET` | (Empty)                          | (Empty)                        | Secret for the above.                                                                                  |
 
 ### Running Against Deployed Environments (`make e2e-remote`)
 
