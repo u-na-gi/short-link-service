@@ -7,6 +7,9 @@ name: plan
 on:
   pull_request:
     branches: [develop, main]
+    # Markdown だけの PR では流さない (インフラの差分が出ない)
+    paths-ignore:
+      - "**.md"
 
 permissions:
   contents: read

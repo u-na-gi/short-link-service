@@ -11,6 +11,10 @@ on:
   push:
     branches: [develop, main]
     tags: ["v*"]
+    # Markdown だけの push では CI も deploy も流さない (出すものが変わらない)。
+    # タグの push にはパスの条件がかからないので、v* はいつも流れる
+    paths-ignore:
+      - "**.md"
 
 permissions:
   contents: read
