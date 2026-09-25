@@ -2,7 +2,7 @@
 
 This document describes the prerequisites for running this service in production environments, infrastructure architecture on AWS / Cloudflare, CI/CD, and daily operational procedures.
 
-> **This service is suspended (2026-09-25).** Steps 1 to 3 under "Tearing Down Environments (Destroy)" below (ECS services, Workers, `envs/<env>` Terraform) have been completed for all three environments. `shared` (ECR, CI IAM), `github`, and `bootstrap` (state bucket) remain. The `deploy` workflow is disabled on GitHub (`gh workflow disable deploy.yml`) so that a push to `develop` / `main` or a `v*` tag does not recreate the environments; re-enable it with `gh workflow enable deploy.yml`. This document is kept as a record of the architecture when running and as procedures for recreation.
+> **This service is suspended (2026-09-25).** Every step under "Tearing Down Environments (Destroy)" below has been done: the three environments, `infra/terraform/github` (Environments and secrets), `infra/terraform/shared` (ECR, CI IAM, GitHub OIDC) and `infra/terraform/bootstrap` (state bucket) are all destroyed. Only the GitHub rulesets that protect `main` / `develop` and `v*` tags are kept; they were removed from Terraform state with `terraform state rm`, so they still exist on GitHub. The `deploy` workflow is disabled on GitHub (`gh workflow disable deploy.yml`). This document is kept as a record of the architecture and as the procedure for recreating it: start again from `bootstrap`, and `terraform import` the two rulesets (`github_repository_ruleset.branches` / `.release_tags`) before applying `infra/terraform/github`.
 
 ## Table of Contents
 
@@ -186,7 +186,7 @@ Follow the sequence strictly. If `cloudflared` remains connected, Tunnel cannot 
 1. Delete ECS service: `ENV=<env> IMAGE_TAG=<current tag> ecspresso delete --config infra/ecspresso/ecspresso.yml --force`
 2. Delete Worker: `cd src/front && bunx wrangler delete --env <env>` (also detaches custom domain routing)
 3. Delete via Terraform: `terraform -chdir=infra/terraform/envs/<env> destroy` (after loading `infra/.envrc.local`)
-4. When decommissioning entirely, after deleting all 3 environments, destroy in order: `infra/terraform/github` → `infra/terraform/shared`. For `shared`, delete images in ECR first. Delete `bootstrap` (state bucket) last after removing `prevent_destroy` (migrate own state back to local first via `terraform init -migrate-state`).
+4. When decommissioning entirely, after deleting all 3 environments, destroy in order: `infra/terraform/github` → `infra/terraform/shared`. For `shared`, delete images in ECR first. Delete `bootstrap` (state bucket) last after removing `prevent_destroy` (migrate own state back to local first via `terraform init -migrate-state`). To keep the branch and tag protection on GitHub, run `terraform state rm github_repository_ruleset.branches github_repository_ruleset.release_tags` before destroying `infra/terraform/github`. The state bucket is versioned, so delete every object version and delete marker before destroying it.
 
 ### Credentials
 
