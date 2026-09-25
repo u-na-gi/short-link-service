@@ -1,7 +1,8 @@
 # 運用の前提と本番アーキテクチャ (`docs/production-architecture.md`)
 
 本サービスを実環境で稼働させるための前提条件と、AWS / Cloudflare 上のインフラ構成、CI / CD、日々の運用手順を説明します。
-構成を決めた経緯 (最初の CloudFront + NLB 案から今の形に変わった理由など) は [plan-infra.md](plan-infra.md) にあります。
+
+> **このサービスは停止しています (2026-09-25)。** 3 環境とも、下の「環境を消す (destroy)」の 1〜3 (ECS の service、Worker、`envs/<env>` の Terraform) を済ませました。`shared` (ECR・CI 用 IAM)、`github`、`bootstrap` (state のバケット) は残してあります。この文書は稼働していたときの構成と、作り直すときの手順として残しています。
 
 ## 目次
 
@@ -69,6 +70,7 @@ flowchart LR
 
 - 利用者から見える入口は Cloudflare だけです。AWS 側には入口 (ロードバランサーや開いたポート) がありません。タスクのセキュリティグループは ingress なしで、`cloudflared` が Cloudflare に外向きに Tunnel を張ります。
 - タスクは public subnet に置いてパブリック IP を付け、ECR / SSM / CloudWatch Logs / Cloudflare へは NAT を使わずに出ます。
+- 最初は CloudFront → 内部 NLB (VPC Origin) → ECS Managed Instances の構成でしたが、新規アカウントの制限で ELB と CloudFront の作成が拒否され、EC2 のオンデマンドの vCPU 上限も 1 だったため、今の形 (Cloudflare Worker + Tunnel + Fargate) に切り替えました。元の構成に戻すには、AWS サポートに ELB / CloudFront の解除を、Service Quotas に vCPU 上限の引き上げを依頼します。
 
 ### 環境
 
@@ -124,7 +126,7 @@ GitHub Actions のワークフローは 3 つです。
 - **`plan.yml`** (PR): `shared` と 3 環境の `terraform plan`。読み取り専用のロールで、結果はログにだけ出します (公開リポジトリなので PR にはコメントしない)。
 - **`deploy.yml`** (develop / main への push、`v*` タグ): CI → イメージ (無ければビルド。prod はビルドせず main のイメージを使う) → `terraform apply` → `ecspresso deploy` → Worker の deploy。
 
-AWS には GitHub の OIDC で入ります。ロールは GitHub の Environment ごとに引き受け元を絞り、CI が自分や環境のロールに強い権限を付けられないよう、環境のロールには権限境界を付けています。詳しくは `infra/terraform/shared/ci.tf` のコメントと [plan-infra.md](plan-infra.md) を参照してください。
+AWS には GitHub の OIDC で入ります。ロールは GitHub の Environment ごとに引き受け元を絞り、CI が自分や環境のロールに強い権限を付けられないよう、環境のロールには権限境界を付けています。詳しくは `infra/terraform/shared/ci.tf` のコメントを参照してください。
 
 > [!NOTE]
 > デプロイ済みの環境への E2E は CI では流しません。GitHub のランナーはデータセンターの IP から来るので、`u-na-gi.com` の Bot Fight Mode に Access より手前で止められるためです (403、`cf-mitigated: challenge`)。E2E は手元から流します。

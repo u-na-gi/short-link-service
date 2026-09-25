@@ -66,11 +66,13 @@ flowchart LR
 
 ## デプロイ済みの環境
 
+> **このサービスは停止しています (2026-09-25)。** 3 環境とも AWS の ECS と Cloudflare の Worker / Tunnel / Access を削除したので、下の URL にはつながりません。下の表は稼働していたときの記録です。作り直す手順は [docs/production-architecture.md](docs/production-architecture.md) を参照してください。
+
 | 環境    | URL                                                    | 出すきっかけ                     | 公開範囲                         | 短縮 URL のドメイン          |
 | ------- | ------------------------------------------------------ | -------------------------------- | -------------------------------- | ---------------------------- |
-| develop | [https://s-dev.u-na-gi.com](https://s-dev.u-na-gi.com) | `develop` ブランチへの push      | Cloudflare Access でログイン必須 | `https://example.com` (要件) |
-| staging | [https://s-stg.u-na-gi.com](https://s-stg.u-na-gi.com) | `main` ブランチへの push         | Cloudflare Access でログイン必須 | サイトと同じ                 |
-| prod    | [https://s.u-na-gi.com](https://s.u-na-gi.com)         | `v*` タグ (オーナーの承認が必要) | 公開                             | サイトと同じ                 |
+| develop | `https://s-dev.u-na-gi.com`                            | `develop` ブランチへの push      | Cloudflare Access でログイン必須 | `https://example.com` (要件) |
+| staging | `https://s-stg.u-na-gi.com`                            | `main` ブランチへの push         | Cloudflare Access でログイン必須 | サイトと同じ                 |
+| prod    | `https://s.u-na-gi.com`                                | `v*` タグ (オーナーの承認が必要) | 公開                             | サイトと同じ                 |
 
 - develop が発行する短縮 URL (`https://example.com/xxxxxxxx`) は直接は開けません。サイトの復元フォームで元の URL に戻します。
 - ホスト名は `infra/terraform/envs/<env>/main.tf` の `hostname` と `src/front/wrangler.jsonc` の `routes` の 2 か所にあり、揃えておく必要があります (deploy 時に検査)。短縮 URL のドメインは `infra/terraform/envs/<env>` の output `shortener_base_url` です。
