@@ -6,6 +6,7 @@ URL を短縮し、短縮 URL から元の URL へのリダイレクトおよび
 
 - [サービス要件](#サービス要件)
 - [システム構成とドキュメント](#システム構成とドキュメント)
+- [デプロイ済みの環境](#デプロイ済みの環境)
 - [クイックスタート](#クイックスタート)
 
 ---
@@ -60,6 +61,19 @@ flowchart LR
 | **開発環境ガイド**           | [docs/development.md](docs/development.md)                         | Docker Compose やローカル直接起動の手順、ホットリロード、環境変数、Devcontainer の詳細設定。                                        |
 | **運用・本番アーキテクチャ** | [docs/production-architecture.md](docs/production-architecture.md) | 単一プロセス制約（インメモリ保持）、AWS 上での本番インフラ設計構想 (CloudFront + ECS on EC2)。                                      |
 | **開発規約・設計方針**       | [docs/conventions.md](docs/conventions.md)                         | コメント・ドキュメントの言語方針、例外不使用のエラーハンドリング、情報保護、ロギング規約。                                          |
+
+---
+
+## デプロイ済みの環境
+
+| 環境    | URL                                                    | 出すきっかけ                     | 公開範囲                         | 短縮 URL のドメイン          |
+| ------- | ------------------------------------------------------ | -------------------------------- | -------------------------------- | ---------------------------- |
+| develop | [https://s-dev.u-na-gi.com](https://s-dev.u-na-gi.com) | `develop` ブランチへの push      | Cloudflare Access でログイン必須 | `https://example.com` (要件) |
+| staging | [https://s-stg.u-na-gi.com](https://s-stg.u-na-gi.com) | `main` ブランチへの push         | Cloudflare Access でログイン必須 | サイトと同じ                 |
+| prod    | [https://s.u-na-gi.com](https://s.u-na-gi.com)         | `v*` タグ (オーナーの承認が必要) | 公開                             | サイトと同じ                 |
+
+- develop が発行する短縮 URL (`https://example.com/xxxxxxxx`) は直接は開けません。サイトの復元フォームで元の URL に戻します。
+- ホスト名は `infra/terraform/envs/<env>/main.tf` の `hostname` と `src/front/wrangler.jsonc` の `routes` の 2 か所にあり、揃えておく必要があります (deploy 時に検査)。短縮 URL のドメインは `infra/terraform/envs/<env>` の output `shortener_base_url` です。
 
 ---
 
