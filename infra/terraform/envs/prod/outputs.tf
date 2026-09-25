@@ -41,7 +41,12 @@ output "vpc_service_id" {
 }
 
 output "public_base_url" {
-  description = "Play の SHORTENER_BASE_URL"
+  description = "サイトの公開 URL (Worker の routes、make e2e-remote の向き先)"
+  value       = local.public_base_url
+}
+
+output "shortener_base_url" {
+  description = "Play の SHORTENER_BASE_URL (短縮 URL のベース)"
   value       = local.public_base_url
 }
 

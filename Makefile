@@ -32,7 +32,8 @@ e2e:
 	exit $$code
 
 # デプロイ済みの環境に同じシナリオを流す。例: make e2e-remote ENV=develop
-# 向き先は Terraform の output (public_base_url)。
+# 向き先は Terraform の output (public_base_url)。自己参照・未発行の短縮 URL は短縮 URL のベース (shortener_base_url) で作る
+# (develop は要件どおり example.com で、サイトのホストと違う)。
 # - Cloudflare Access をかけた環境 (develop / staging) は、サービストークンを SSM から読んでヘッダで付ける。
 #   トークンはコマンドラインに載せず、環境変数で runn に渡す。
 # - Turnstile をかけた環境 (staging / prod) は E2E_TURNSTILE=on で、短縮・復元のシナリオを飛ばし、
@@ -58,6 +59,7 @@ e2e-remote:
 	@$(MASK); outputs=$$(terraform -chdir=infra/terraform/envs/$(ENV) output -json) || exit 1; \
 	out() { printf '%s' "$$outputs" | jq -r --arg k "$$1" '.[$$k].value // empty'; }; \
 	base=$$(out public_base_url); \
+	short=$$(out shortener_base_url); \
 	E2E_TURNSTILE=$$(if [ -n "$$(out turnstile_site_key)" ]; then echo on; fi); \
 	CF_ACCESS_CLIENT_ID=; CF_ACCESS_CLIENT_SECRET=; \
 	if [ "$$(out access_enabled)" = true ]; then \
@@ -72,8 +74,8 @@ e2e-remote:
 		| grep -i -E '^(HTTP/|location:|cf-mitigated:|server:|content-type:)' | tr -d '\r' | tr '\n' ' ')"; \
 	docker run --rm \
 		-e E2E_BASE_URL=$$base \
-		-e E2E_SELF_URL=$$base/abcd1234 \
-		-e E2E_UNKNOWN_SHORT_URL=$$base/zzzzzzzz \
+		-e E2E_SELF_URL=$$short/abcd1234 \
+		-e E2E_UNKNOWN_SHORT_URL=$$short/zzzzzzzz \
 		-e E2E_TURNSTILE=$$E2E_TURNSTILE \
 		-e CF_ACCESS_CLIENT_ID -e CF_ACCESS_CLIENT_SECRET \
 		-v $${LOCAL_WORKSPACE_FOLDER:-$$PWD}/tests/scenarios:/scenarios:ro \

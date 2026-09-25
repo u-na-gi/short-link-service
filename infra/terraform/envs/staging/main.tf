@@ -55,7 +55,7 @@ locals {
   # Worker を公開するホスト名 (src/front/wrangler.jsonc の env.staging の routes と揃える)
   hostname = "s-stg.u-na-gi.com"
 
-  # 利用者に見せる公開 URL。Play の SHORTENER_BASE_URL
+  # 利用者に見せる公開 URL。Worker の routes と make e2e-remote の向き先で、短縮 URL のベースも兼ねる
   public_base_url = "https://${local.hostname}"
 }
 

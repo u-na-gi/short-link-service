@@ -187,7 +187,7 @@ develop / staging は Cloudflare Access で守られているので、サービ�
 make e2e-remote ENV=develop
 ```
 
-- 向き先は `infra/terraform/envs/<ENV>` の output `public_base_url`、トークンは SSM (`/short-link-<ENV>/e2e/access-client-{id,secret}`) から読みます。
+- 向き先は `infra/terraform/envs/<ENV>` の output `public_base_url`、`E2E_SELF_URL` / `E2E_UNKNOWN_SHORT_URL` は output `shortener_base_url` (develop は `https://example.com`) から作り、トークンは SSM (`/short-link-<ENV>/e2e/access-client-{id,secret}`) から読みます。
 - Turnstile をかけた環境 (staging / prod) では `E2E_TURNSTILE=on` を渡し、短縮・復元のシナリオ (`if: env.E2E_TURNSTILE != 'on'`) を飛ばして、トークンの無いリクエストが 403 `turnstile_failed` で断られることを `turnstile.yml` で確かめます。Turnstile は人の操作を確かめる仕組みなので、runn からは通せません。機能の E2E は、Turnstile をかけない develop で流します。
 - prod は Cloudflare Access をかけていないので、サービストークンは読まずに流します。
 - Worker の回数制限 (API は IP ごとに 1 分 20 回) があるので、続けて流すときは 1 分空けてください。

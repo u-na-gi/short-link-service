@@ -55,8 +55,13 @@ locals {
   # Worker を公開するホスト名 (src/front/wrangler.jsonc の env.develop の routes と揃える)
   hostname = "s-dev.u-na-gi.com"
 
-  # 利用者に見せる公開 URL。Play の SHORTENER_BASE_URL
+  # サイトの公開 URL。Worker の routes と make e2e-remote の向き先
   public_base_url = "https://${local.hostname}"
+
+  # 短縮 URL のベース (Play の SHORTENER_BASE_URL)。要件の「短いURLのドメインは https://example.com/」に合わせる。
+  # 発行した短縮 URL は直接は開けず、サイトの復元フォームで戻す。自己参照の判定も example.com になるので、
+  # develop では s-dev.u-na-gi.com 宛の URL を短縮できてしまう (リダイレクトループは develop だけなので許容)
+  shortener_base_url = "https://example.com"
 }
 
 module "aws" {

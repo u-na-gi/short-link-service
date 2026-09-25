@@ -25,7 +25,7 @@
       "environment": [
         {
           "name": "SHORTENER_BASE_URL",
-          "value": "{{ tfstate `output.public_base_url` }}"
+          "value": "{{ tfstate `output.shortener_base_url` }}"
         }
       ],
       "secrets": [
