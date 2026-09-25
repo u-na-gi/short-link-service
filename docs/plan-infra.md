@@ -112,7 +112,7 @@ AWS サポートの解除を待たずに動かすため、ユーザーと相談�
    - [x] 8b. Cloudflare Access (develop)。`modules/cloudflare/access.tf`。未ログインではページ / API / 短縮 URL すべてが Access のログインへ 302 になることを確認。ブラウザでのログインはユーザーが確認する未ログインならログイン画面に飛び、ログインすれば使える
      - E2E は Access のサービストークンで通す (ユーザー了承)。トークンは Terraform で作って SSM (`/short-link-<env>/e2e/access-client-{id,secret}`) へ。シナリオは全ステップの headers に `*access` (vars のアンカー)。`make e2e-remote ENV=develop`
      - `make e2e-remote ENV=develop` で 4 シナリオ 16 ステップが Access 越しに通ることを確認済み
-   - [ ] 9. destroy 手順 (ECS の service を 0 にしてから terraform destroy。cloudflared が繋がったままだと Tunnel を消せない)、`docs/production-architecture.md` / `src/server/CLAUDE.md` を実際の構成に書き直す
+   - [x] 9. destroy 手順と運用手順を `docs/production-architecture.md` に書き、構成の説明も今の形に書き直した (`src/server/CLAUDE.md` / `src/front/README.md` / README も)
 4. staging / prod と Turnstile
    - [x] `envs/staging` (`s-stg.u-na-gi.com`、10.20.0.0/16、Access あり) と `envs/prod` (`s.u-na-gi.com`、10.30.0.0/16、Access なし) を apply (Turnstile のウィジェット以外)
    - [x] staging / prod の ECS を develop と同じイメージで deploy
@@ -146,4 +146,5 @@ AWS サポートの解除を待たずに動かすため、ユーザーと相談�
    - [x] develop ブランチを作り、CI と develop への deploy が通る
      - `tests` の oxlint は lint する TypeScript が無く失敗するので、CI では流さない
      - **deploy 後の E2E は CI では流さない (ユーザー判断)**。GitHub のランナー (データセンターの IP) は u-na-gi.com の Bot Fight Mode に Access より手前で止められる (403、`cf-mitigated: challenge`)。Free プランの Bot Fight Mode は例外を作れない。E2E は手元から `make e2e-remote ENV=...` で流す (最初に preflight でステータスと Cloudflare の判定を出す)
-   - [ ] main への反映 (staging)、`v*` タグでの prod (承認つき) を CI で通す
+   - [x] PR #1 を main に merge → staging に deploy。`v0.1.0` を切り、承認して prod に deploy (main のイメージを再ビルドなしで使い、`release-<sha>` を足した)。3 環境とも手元からの E2E が通る
+   - [x] フロントに「予告なく終了する・大切なリンクに使わない」注意書き (ユーザー指定)

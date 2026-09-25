@@ -59,7 +59,7 @@ flowchart LR
 | **画面**                     | [src/front/README.md](src/front/README.md)                         | React 19 + TypeScript 7 + Vite 8 (Bun)。ログイン不要の 1 画面 SPA。Vite プロキシ設定、画面仕様、クライアントバリデーション。        |
 | **E2E テスト**               | [tests/README.md](tests/README.md)                                 | [runn](https://github.com/k1LoW/runn) (YAML runbook)。実際に起動したサービスに対する外側からの結合・疎通テストシナリオ。            |
 | **開発環境ガイド**           | [docs/development.md](docs/development.md)                         | Docker Compose やローカル直接起動の手順、ホットリロード、環境変数、Devcontainer の詳細設定。                                        |
-| **運用・本番アーキテクチャ** | [docs/production-architecture.md](docs/production-architecture.md) | 単一プロセス制約（インメモリ保持）、AWS 上での本番インフラ設計構想 (CloudFront + ECS on EC2)。                                      |
+| **運用・本番アーキテクチャ** | [docs/production-architecture.md](docs/production-architecture.md) | 単一プロセス制約（インメモリ保持）、本番構成 (Cloudflare Worker + Tunnel + ECS on Fargate)、CI / CD、リリース・E2E・destroy の手順。 |
 | **開発規約・設計方針**       | [docs/conventions.md](docs/conventions.md)                         | コメント・ドキュメントの言語方針、例外不使用のエラーハンドリング、情報保護、ロギング規約。                                          |
 
 ---

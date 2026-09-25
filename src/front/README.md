@@ -155,4 +155,4 @@ bun run build
 ```
 
 実行すると、TypeScript の型チェック (`tsc --noEmit`) が行われた後、Vite により最適化された静的ファイル群が `dist/` ディレクトリに出力されます。
-本番環境では、この `dist/` の成果物を Amazon S3 等の静的ホスティングに配置し、CloudFront を通じて配信します。
+本番環境では、この `dist/` の成果物を Cloudflare Worker の静的アセットとして配信します (`make deploy-front ENV=...`)。Worker のコードは `worker/`、設定は `wrangler.jsonc` です。構成は [docs/production-architecture.md](../../docs/production-architecture.md) を参照してください。
