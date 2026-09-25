@@ -7,6 +7,7 @@ A web service that shortens URLs and handles redirection and resolution from sho
 - [Service Requirements](#service-requirements)
 - [System Architecture and Documentation](#system-architecture-and-documentation)
 - [Deployed Environments](#deployed-environments)
+  - [Deploying It Yourself](#deploying-it-yourself)
 - [Quickstart](#quickstart)
 
 ---
@@ -76,6 +77,14 @@ flowchart LR
 
 - Short URLs issued by develop (`https://example.com/xxxxxxxx`) cannot be opened directly. Restore them to the original URL using the resolve form on the site.
 - The hostname appears in two places: `hostname` in `infra/terraform/envs/<env>/main.tf` and `routes` in `src/front/wrangler.jsonc`, and must match (checked on deploy). The short URL domain is the `shortener_base_url` output of `infra/terraform/envs/<env>`.
+
+### Deploying It Yourself
+
+Everything needed to deploy is in [What You Need to Deploy](docs/production-architecture.md#what-you-need-to-deploy):
+
+- Secrets: copy [`infra/.envrc.local.example`](infra/.envrc.local.example) to `infra/.envrc.local` (gitignored) and fill it in. The Cloudflare token permissions are listed in that section.
+- Your own domain: replace the `u-na-gi.com` hostnames in `infra/terraform/envs/<env>/main.tf` (`hostname`) and `src/front/wrangler.jsonc` (`routes`) with subdomains of a zone in your Cloudflare account.
+- Other values to replace (state bucket name, VPC Service IDs, GitHub IDs) are in the same section.
 
 ---
 
