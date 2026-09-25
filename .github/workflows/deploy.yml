@@ -1,18 +1,18 @@
-# develop への push → develop、main への push → staging、v* のタグ → prod に deploy する。
-# どの環境に出すかは GitHub の Environment が決め、Environment 側でブランチ・タグと承認 (prod) を絞っている
-# (infra/terraform/github)。AWS のロールもその Environment からしか引き受けられない (infra/terraform/shared/ci.tf)。
+# Push to develop -> develop, push to main -> staging, v* tag -> prod.
+# The GitHub Environment decides the target, and the Environment restricts branches/tags and approval (prod)
+# (infra/terraform/github). The AWS role can also only be assumed from that Environment (infra/terraform/shared/ci.tf).
 #
-# 流れ: CI (ci.yml) → イメージ (コミットの sha でタグ付け) → terraform apply → ecspresso deploy → Worker
-# (デプロイ済みの環境への E2E は手元から make e2e-remote で流す。理由は最後のステップのコメント)
-# prod は main に入っているコミットだけを、main で作った同じ sha のイメージで出す (ビルドし直さない)。
+# Flow: CI (ci.yml) -> image (tagged with the commit sha) -> terraform apply -> ecspresso deploy -> Worker
+# (E2E against deployed environments runs locally with make e2e-remote. See the comment on the last step for why)
+# prod ships only commits that are in main, using the same-sha image built on main (no rebuild).
 name: deploy
 
 on:
   push:
     branches: [develop, main]
     tags: ["v*"]
-    # Markdown と devcontainer だけの push では CI も deploy も流さない (出すものが変わらない)。
-    # タグの push にはパスの条件がかからないので、v* はいつも流れる
+    # Skip CI and deploy for pushes that only change Markdown and the devcontainer (nothing to ship changes).
+    # Path filters do not apply to tag pushes, so v* always runs
     paths-ignore:
       - "**.md"
       - ".devcontainer/**"
@@ -26,7 +26,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
 
   target:
-    name: 出し先を決める
+    name: Decide target
     runs-on: ubuntu-latest
     outputs:
       env: ${{ steps.env.outputs.env }}
@@ -48,7 +48,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    # 同じ環境への deploy は 1 つずつ。途中で止めると state やタスクが中途半端になるので取り消さない
+    # One deploy at a time per environment. Do not cancel: stopping midway leaves state and tasks half-done
     concurrency:
       group: deploy-${{ needs.target.outputs.env }}
       cancel-in-progress: false
@@ -59,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # prod で「main に入っているコミットか」を確かめるのに履歴が要る
+          # prod needs history to check "is this commit in main"
           fetch-depth: 0
       - uses: aquaproj/aqua-installer@96a9bc20066c5bf5e275b41019cfc165b25f4e2e # v4.0.5
         with:
@@ -70,11 +70,11 @@ jobs:
       - run: bun install --frozen-lockfile
         working-directory: src/front
 
-      - name: prod は main に入っているコミットだけ
+      - name: prod only for commits in main
         if: env.ENV == 'prod'
         run: |
           if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::$GITHUB_SHA は main に入っていない。staging を通ったコミットにだけタグを切る"
+            echo "::error::$GITHUB_SHA is not in main. Only tag commits that have gone through staging"
             exit 1
           fi
 
@@ -85,13 +85,13 @@ jobs:
           role-duration-seconds: 7200
           mask-aws-account-id: true
 
-      - name: イメージ (無ければビルドして push。prod はビルドしない)
+      - name: Image (build and push if missing; prod does not build)
         run: |
           terraform -chdir=infra/terraform/shared init -input=false >/dev/null
           repo=$(terraform -chdir=infra/terraform/shared output -raw server_repository_url)
           exists() {
             aws ecr describe-images --repository-name short-link-service/server --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>"$RUNNER_TEMP/ecr.err" && return 0
-            # 無いこと以外のエラー (権限・スロットリング) は「無い」と取り違えずに止める
+            # Stop on errors other than "not found" (permissions, throttling) instead of mistaking them for "missing"
             grep -q ImageNotFoundException "$RUNNER_TEMP/ecr.err" || { cat "$RUNNER_TEMP/ecr.err"; exit 1; }
             return 1
           }
@@ -100,13 +100,13 @@ jobs:
             exit 0
           fi
           if [ "$ENV" = prod ]; then
-            echo "::error::prod は main で作ったイメージを使う。$IMAGE_TAG のイメージが無い (main への push の deploy が終わってからタグを切る)"
+            echo "::error::prod uses the image built on main. No image for $IMAGE_TAG (tag after the deploy for the push to main finishes)"
             exit 1
           fi
           aws ecr get-login-password | docker login --username AWS --password-stdin "${repo%%/*}"
-          # 単一マニフェストにする (index だと実体がタグなしになり、ECR のライフサイクルで消える。Dockerfile.prod を参照)
+          # Build a single manifest (with an index, the actual image is untagged and gets removed by the ECR lifecycle. See Dockerfile.prod)
           docker build --provenance=false --sbom=false -f src/server/Dockerfile.prod -t "$repo:$IMAGE_TAG" src/server
-          # develop と main に同じコミットを同時に push すると、先に push された側と競合する (タグは上書きできない)
+          # Pushing the same commit to develop and main at once conflicts with whichever was pushed first (tags cannot be overwritten)
           if ! docker push "$repo:$IMAGE_TAG"; then
             exists || exit 1
             echo "image $IMAGE_TAG was pushed by another run"
@@ -124,8 +124,8 @@ jobs:
       - name: ecspresso deploy (server)
         run: ecspresso deploy --config infra/ecspresso/ecspresso.yml
 
-      # prod で使ったイメージに release-<sha> を足し、ECR のライフサイクル (新しい 30 個だけ残す) で消えないようにする
-      - name: prod のイメージを残す
+      # Add release-<sha> to the image used in prod so the ECR lifecycle (keeps only the newest 30) does not remove it
+      - name: Keep the prod image
         if: env.ENV == 'prod'
         run: |
           manifest=$(aws ecr batch-get-image --repository-name short-link-service/server --image-ids imageTag="$IMAGE_TAG" --query 'images[0].imageManifest' --output text)
@@ -133,13 +133,13 @@ jobs:
             || grep -q ImageAlreadyExistsException "$RUNNER_TEMP/put.err" \
             || { cat "$RUNNER_TEMP/put.err"; exit 1; }
 
-      - name: front (Worker) を deploy
+      - name: Deploy front (Worker)
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: make deploy-front ENV="$ENV"
 
-      # デプロイ済みの環境への E2E (make e2e-remote) は CI では流さず、手元から流す。
-      # GitHub のランナーはデータセンターの IP から来るので、u-na-gi.com の Bot Fight Mode に Access より手前で
-      # 止められる (403、cf-mitigated: challenge)。Free プランの Bot Fight Mode は例外を作れない。
-      # server が動いていることは、ecspresso がサービスの安定を待つことと、タスクのヘルスチェックで見ている
+      # E2E against deployed environments (make e2e-remote) does not run in CI; run it locally.
+      # GitHub runners come from data center IPs, so u-na-gi.com's Bot Fight Mode blocks them before Access
+      # (403, cf-mitigated: challenge). Bot Fight Mode on the Free plan cannot have exceptions.
+      # That the server is running is checked by ecspresso waiting for the service to stabilize, and by the task health check

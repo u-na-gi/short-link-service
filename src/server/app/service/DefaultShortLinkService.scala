@@ -5,9 +5,10 @@ import java.security.SecureRandom
 import javax.inject._
 import scala.concurrent.{ExecutionContext, Future}
 
-/** ランダムなコードを振り、被ったら採番し直す実装。
+/** Implementation that assigns random codes and generates a new one on collision.
   *
-  * `nextCode` はテストからコードを固定するための差し込み口。本番は DI 用の補助コンストラクタで乱数を使う。
+  * `nextCode` is a hook for tests to pin codes. Production uses random codes through the auxiliary
+  * constructor for DI.
   */
 @Singleton
 class DefaultShortLinkService(
@@ -44,10 +45,12 @@ object DefaultShortLinkService {
   private val Alphabet: IndexedSeq[Char] = ('a' to 'z') ++ ('A' to 'Z') ++ ('0' to '9')
   private val CodeLength = 8
 
-  /** 62^8 通りあるので実際に何度も被ることはない。採番の不具合で無限ループしないための上限。 */
+  /** There are 62^8 codes, so repeated collisions do not happen in practice. A limit so a code
+    * generation bug does not loop forever.
+    */
   private[service] val MaxAttempts = 10
 
-  // SecureRandom はスレッドセーフなので 1 つを共有する。
+  // SecureRandom is thread-safe, so share one instance.
   private val random = new SecureRandom()
 
   private[service] def randomCode(): String =

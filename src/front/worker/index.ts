@@ -1,5 +1,5 @@
-// Cloudflare Worker のエントリ。静的アセット (vite build の dist) と Play への振り分けを持つ。
-// Play へは Workers VPC の VPC Service (Cloudflare Tunnel) で届く。設定は ../wrangler.jsonc。
+// Cloudflare Worker entry point. Routes between static assets (dist from vite build) and Play.
+// Play is reached through the Workers VPC VPC Service (Cloudflare Tunnel). Config is in ../wrangler.jsonc.
 
 import {
   clientKey,
@@ -20,9 +20,9 @@ interface Env {
   SERVER: Fetcher;
   API_LIMITER: RateLimit;
   REDIRECT_LIMITER: RateLimit;
-  // "on" の環境 (staging / prod) だけ短縮と復元に Turnstile をかける。wrangler.jsonc の vars
+  // Turnstile is applied to shorten and resolve only where this is "on" (staging / prod). vars in wrangler.jsonc
   TURNSTILE?: string;
-  // wrangler secret put TURNSTILE_SECRET_KEY (make deploy-front が Terraform の output から入れる)
+  // wrangler secret put TURNSTILE_SECRET_KEY (make deploy-front sets it from the Terraform output)
   TURNSTILE_SECRET_KEY?: string;
 }
 
@@ -37,7 +37,7 @@ export default {
 
       const action = turnstileActionOf(request.method, url.pathname);
       if (env.TURNSTILE === "on" && action !== null) {
-        // シークレットの入れ忘れで黙って Turnstile が外れないよう、無ければ断る
+        // Reject if the secret is missing, so a forgotten secret does not silently disable Turnstile
         if (!env.TURNSTILE_SECRET_KEY) {
           console.error("TURNSTILE is on but TURNSTILE_SECRET_KEY is not set");
           return serverUnavailable();

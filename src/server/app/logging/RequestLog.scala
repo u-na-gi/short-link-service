@@ -6,8 +6,9 @@ import play.api.mvc.RequestHeader
 
 object RequestLog {
 
-  /** アクセスログと同じ requestId (RequestIdFilter が振る) をログに付け、1 リクエスト分を突き合わせられるようにする。 Play は Future
-    * でスレッドをまたぐので MDC は引き継がれず、ログごとに明示的に渡す。
+  /** Adds the same requestId as the access log (assigned by RequestIdFilter), so logs for one
+    * request can be matched up. Play crosses threads with Futures and MDC is not carried over, so
+    * pass it explicitly on each log.
     */
   def marker(request: RequestHeader): MarkerContext =
     RequestId

@@ -1,7 +1,7 @@
-# userが良しというまで勝手に実装したりファイルを編集したりするな
-あと勝手にサーバー起動したりもするな
-# メモリ・skill はリポジトリ内の .claude/ で管理する
-- メモリは .claude/memory/ に書き、索引は .claude/memory/MEMORY.md に1行ずつ追記する
-- skill を作るときは .claude/skills/ に置く
+# Do not implement or edit files without user approval
+Also do not start servers without permission
+# Manage memory and skills in .claude/ within the repository
+- Write memory to .claude/memory/ and append to the index in .claude/memory/MEMORY.md one line at a time
+- When creating skills, place them in .claude/skills/
 
 @.claude/memory/MEMORY.md

@@ -1,4 +1,4 @@
-# Dockerfile.prod のビルドコンテキスト。sbt stage に要るものだけ入れる
+# Build context for Dockerfile.prod. Include only what sbt stage needs
 *
 !build.sbt
 !project/build.properties

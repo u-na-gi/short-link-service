@@ -1,9 +1,9 @@
-# PR と、deploy の前 (deploy.yml から呼ぶ) に流すチェック。AWS や Cloudflare には触らない (シークレットを使わない)。
+# Checks run on PRs and before deploy (called from deploy.yml). Does not touch AWS or Cloudflare (uses no secrets).
 name: ci
 
 on:
   pull_request:
-    # Markdown と devcontainer だけの PR では流さない (検査する対象が変わらない)
+    # Skip PRs that only change Markdown and the devcontainer (nothing to check changes)
     paths-ignore:
       - "**.md"
       - ".devcontainer/**"
@@ -13,12 +13,12 @@ permissions:
   contents: read
 
 env:
-  # aqua が GitHub からツールを落とすときのレート制限を避ける
+  # Avoid rate limits when aqua downloads tools from GitHub
   AQUA_GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
   secrets-scan:
-    name: 秘密情報の検出 (gitleaks)
+    name: Secret detection (gitleaks)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -27,11 +27,11 @@ jobs:
       - uses: aquaproj/aqua-installer@96a9bc20066c5bf5e275b41019cfc165b25f4e2e # v4.0.5
         with:
           aqua_version: v2.63.0
-      # 全履歴を見る。見つかったら値は伏せて場所だけ出す
+      # Scan the full history. On a hit, show only the location and hide the value
       - run: gitleaks git --redact --no-banner .
 
   workflows:
-    name: ワークフローの検査 (actionlint)
+    name: Workflow lint (actionlint)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -57,7 +57,7 @@ jobs:
       - run: sbt -batch scalafmtCheckAll test
 
   front:
-    name: front (型・テスト・ビルド)
+    name: front (types, tests, build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -75,7 +75,7 @@ jobs:
       - run: bun run build
 
   tests-lint:
-    name: E2E シナリオの整形
+    name: E2E scenario formatting
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -86,7 +86,7 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
-      # oxlint (bun run lint) は、lint する TypeScript が tests/ に無いので流さない (ファイルが無いと失敗する)
+      # Skip oxlint (bun run lint): tests/ has no TypeScript to lint (it fails when there are no files)
       - run: bun run format:check
 
   terraform:
@@ -98,8 +98,8 @@ jobs:
         with:
           aqua_version: v2.63.0
       - run: terraform fmt -check -recursive infra/terraform
-      # backend に繋がずに (認証なしで) 構文と型だけ確かめる
-      - name: validate と tflint
+      # Check only syntax and types, without connecting to the backend (no credentials)
+      - name: validate and tflint
         run: |
           for dir in infra/terraform/bootstrap infra/terraform/shared infra/terraform/github infra/terraform/envs/*; do
             echo "::group::$dir"
@@ -110,11 +110,11 @@ jobs:
           done
 
   e2e:
-    name: E2E (ローカルの compose)
+    name: E2E (local compose)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # 開発用のコンテナは uid 1000 で動き、マウントしたソースに書く (sbt の .bsp など)。
-      # ランナーのチェックアウトは別の uid の持ち物なので、書けるようにしておく
+      # The dev container runs as uid 1000 and writes into the mounted source (sbt's .bsp etc.).
+      # The runner's checkout belongs to a different uid, so make it writable
       - run: chmod -R a+w src tests
       - run: make e2e

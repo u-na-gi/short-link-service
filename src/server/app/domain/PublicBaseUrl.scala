@@ -2,28 +2,32 @@ package domain
 
 import java.net.{URI, URISyntaxException}
 
-/** 利用者に見せる自サービスの公開 URL（スキーム + ホスト [+ ポート]、末尾スラッシュなし）。
+/** Public URL of this service shown to users (scheme + host [+ port], no trailing slash).
   *
-  * 短縮 URL は Host ヘッダではなく必ずこの値から組み立てる。
+  * Short URLs are always built from this value, never from the Host header.
   *
-  * 本番は Cloudflare Worker と Tunnel を挟むので Host は localhost:9000 になり、TLS 終端の後ろではスキームも http に見える。
+  * In production, the Cloudflare Worker and Tunnel sit in between, so Host is localhost:9000, and
+  * behind TLS termination the scheme also looks like http.
   *
-  * そもそも Host ヘッダはクライアントが偽装できる。
+  * Besides, clients can spoof the Host header.
   */
 final case class PublicBaseUrl private (value: String) {
 
-  /** 自己参照の判定に使うホスト名。設定の出どころを 1 つにして、短縮 URL の向き先と判定が食い違わないようにする。 */
+  /** Host name used for the self-reference check. One config source keeps it in line with where
+    * short URLs point.
+    */
   def host: ServiceHost = ServiceHost(URI(value).getHost)
 
   def linkTo(code: String): String = s"$value/$code"
 
-  /** 自サービスの短縮 URL ならコードを取り出す。
+  /** Extracts the code if the URL is a short URL of this service.
     *
-    * ホスト名だけで判定し、スキームとポートは問わない。自己参照の判定 ([[ServiceHost]]) と基準を揃えるため。
+    * Only the host name is checked; scheme and port do not matter. This keeps the same rule as the
+    * self-reference check ([[ServiceHost]]).
     *
-    * ずれると「短縮はできないのに、戻すこともできない」URL ができる。
+    * If they differed, some URLs could be neither shortened nor resolved.
     *
-    * クエリとフラグメントは、リダイレクト (`GET /:code`) でも無視されるので同じく無視する。
+    * Query and fragment are ignored, as the redirect (`GET /:code`) also ignores them.
     */
   def codeOf(raw: String): Option[String] =
     Url
@@ -35,13 +39,15 @@ final case class PublicBaseUrl private (value: String) {
 
 object PublicBaseUrl {
 
-  /** 採番するコード (英数 8 文字) だけを 1 階層のパスとして受け付ける。 */
+  /** Accept only an issued code (8 alphanumeric characters) as a single path segment. */
   private val CodePath = "/[A-Za-z0-9]{8}".r
 
-  /** 設定ミスは起動時に止めるだけで利用者には見せないので、文言は持たせず呼び出し側 (Module) で組み立てる。 */
+  /** Config mistakes only stop startup and are never shown to users, so no messages here; the
+    * caller (Module) builds them.
+    */
   enum Error {
 
-    /** stack trace を残せるよう、パースの例外をそのまま持つ。 */
+    /** Keeps the parse exception as-is, so the stack trace is not lost. */
     case Malformed(cause: URISyntaxException)
     case UnsupportedScheme(scheme: Option[String])
     case MissingHost
@@ -49,7 +55,7 @@ object PublicBaseUrl {
     case HasQuery
     case HasFragment
 
-    /** 短縮 URL は /{code} で Play のルートに当たる前提なので、パス付きの公開 URL は扱えない。 */
+    /** Short URLs assume /{code} hits the Play route, so a public URL with a path won't work. */
     case HasPath(path: String)
   }
 

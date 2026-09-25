@@ -1,84 +1,95 @@
-# E2E シナリオテスト (`tests/`)
+# E2E Scenario Tests (`tests/`)
 
-実際に起動したサービス群（フロントエンド + API サーバ）に対して外部から HTTP リクエストを送信し、結合状態での振る舞いを検証するエンドツーエンド（E2E）テストです。[runn](https://github.com/k1LoW/runn) (YAML 形式のシナリオテスティングツール) を採用しています。
+End-to-end (E2E) tests that send HTTP requests externally to running services (frontend + API server) to verify integrated behavior. Uses [runn](https://github.com/k1LoW/runn) (YAML-based scenario testing tool).
 
-## 目次
+## Table of Contents
 
-- [テスト方針と棲み分け](#テスト方針と棲み分け)
-- [実行方法](#実行方法)
-- [E2E 実行環境の仕組み (`compose.e2e.yaml`)](#e2e-実行環境の仕組み-composee2eyaml)
-- [シナリオ一覧とテスト内容](#シナリオ一覧とテスト内容)
-- [環境変数](#環境変数)
-- [シナリオの追加とツール管理](#シナリオの追加とツール管理)
+- [Testing Policy and Separation of Concerns](#testing-policy-and-separation-of-concerns)
+- [How to Run](#how-to-run)
+  - [Basic Run Commands](#basic-run-commands)
+  - [Listing Scenarios and Syntax Checking](#listing-scenarios-and-syntax-checking)
+  - [Code Quality and Formatting Commands](#code-quality-and-formatting-commands)
+- [How the E2E Environment Works (`compose.e2e.yaml`)](#how-the-e2e-environment-works-composee2eyaml)
+  - [Key Features and Design Intent](#key-features-and-design-intent)
+- [Scenarios and Test Coverage](#scenarios-and-test-coverage)
+  - [1. `health.yml`](#1-healthyml)
+  - [2. `create_link.yml`](#2-create_linkyml)
+  - [3. `create_link_validation.yml`](#3-create_link_validationyml)
+  - [4. `resolve_link.yml`](#4-resolve_linkyml)
+- [Environment Variables](#environment-variables)
+  - [Running Against Deployed Environments (`make e2e-remote`)](#running-against-deployed-environments-make-e2e-remote)
+- [Adding Scenarios and Tool Management](#adding-scenarios-and-tool-management)
+  - [runn Version Management](#runn-version-management)
+  - [Procedure for Adding a New Scenario](#procedure-for-adding-a-new-scenario)
 
 ---
 
-## テスト方針と棲み分け
+## Testing Policy and Separation of Concerns
 
-本リポジトリでは、すべてのパターンを E2E で網羅するのではなく、各テストレイヤの責務を明確に分けています。
+Rather than covering all patterns in E2E, this repository clearly separates responsibilities across testing layers.
 
-| テストレイヤ                 | 配置場所           | 実行ツール | 主な検証対象                                                                                                                                                                                           |
-| ---------------------------- | ------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **ユニット / 統合テスト**    | `src/server/test/` | ScalaTest  | アプリケーションをインプロセスで起動し、ドメインのバリデーション規則、URL の正規化、ルーティング、JSON シリアライズ/デシリアライズ、コード採番の衝突リトライなど、境界値や内部ロジックを網羅的に検証。 |
-| **フロントエンド単体テスト** | `src/front/`       | Bun Test   | 送信前 URL 簡易バリデーション (`url.test.ts`)。                                                                                                                                                        |
-| **E2E シナリオテスト**       | ここ (`tests/`)    | runn       | 実際にプロセスとして立ち上がったフロントエンド（Vite リバースプロキシ）およびバックエンド（Play Framework）に対し、外部クライアント視点での結合・疎通・ルーティングの振る舞いを検証。                  |
+| Test Layer | Location | Tool | Primary Scope |
+| --- | --- | --- | --- |
+| **Unit / Integration Tests** | `src/server/test/` | ScalaTest | Starts application in-process, thoroughly testing boundary values and internal logic such as domain validation rules, URL normalization, routing, JSON serialization/deserialization, and code allocation collision retries. |
+| **Frontend Unit Tests** | `src/front/` | Bun Test | Pre-submission lightweight URL validation (`url.test.ts`). |
+| **E2E Scenario Tests** | Here (`tests/`) | runn | Verifies integrated behavior, connectivity, and routing from an external client perspective against running frontend (Vite reverse proxy) and backend (Play Framework) processes. |
 
 > [!NOTE]
-> E2E テストの目的は詳細な業務ルールの二重チェックではなく、「各コンポーネントが正しく連携し、実際にリクエストを受け付けて仕様どおりに応答できるか」を担保することにあります。
+> The goal of E2E tests is not duplicate checking of detailed business rules, but guaranteeing that "each component interacts correctly, accepts requests, and responds per specifications in actual execution."
 
 ---
 
-## 実行方法
+## How to Run
 
-### 基本の実行コマンド
+### Basic Run Commands
 
-リポジトリルートで以下のコマンドを実行します。
+Run the following commands at the repository root.
 
 ```sh
-# E2E テストの実行 (専用 Compose の起動から片付けまで全自動)
+# Run E2E tests (fully automated from starting dedicated Compose to cleanup)
 make e2e
 
-# 成功したステップも含め、すべての HTTP 送受信ログを出力
+# Output all HTTP request/response logs, including successful steps
 make e2e E2E_ARGS="--debug"
 
-# 特定のラベルのシナリオのみを実行 (例: smoke)
+# Run only scenarios with specific labels (e.g., smoke)
 make e2e E2E_ARGS="--label smoke"
 ```
 
-### シナリオ一覧の確認と構文チェック
+### Listing Scenarios and Syntax Checking
 
-Devcontainer 内部またはホストマシン上に `runn` がインストールされている場合、以下のコマンドで構文チェックとシナリオ一覧の確認ができます。
+When `runn` is installed inside the Devcontainer or on the host machine, check syntax and list scenarios with:
 
 ```sh
-# 構文チェックとステップ一覧表示
+# Check syntax and list steps
 runn list -l "tests/scenarios/*.yml" </dev/null
 ```
 
 > [!WARNING]
-> `runn list` をターミナルから対話なしで実行する場合、標準入力を閉じないとプロンプト入力待ちになり処理が進まなくなるため、必ず末尾に `</dev/null` を付与してください。
+> When executing `runn list` non-interactively from a terminal, always append `</dev/null`; otherwise it waits for prompt input and blocks execution.
 
-### コード品質・フォーマットコマンド
+### Code Quality and Formatting Commands
 
-`tests/` ディレクトリ内には YAML ファイルや TypeScript 型定義のための環境が用意されています。
+The `tests/` directory contains configurations for YAML files and TypeScript type definitions.
 
 ```sh
 cd tests
 
-# oxlint による静的解析
+# Static analysis with oxlint
 bun run lint
 
-# Prettier によるコード整形
+# Code formatting with Prettier
 bun run format
 
-# Prettier のフォーマットチェック
+# Check formatting with Prettier
 bun run format:check
 ```
 
 ---
 
-## E2E 実行環境の仕組み (`compose.e2e.yaml`)
+## How the E2E Environment Works (`compose.e2e.yaml`)
 
-`make e2e` は、開発用の `compose.yaml` に `compose.e2e.yaml` を重ね、独立したプロジェクト名 `short-link-e2e` として起動します。
+`make e2e` overlays `compose.e2e.yaml` onto development `compose.yaml`, starting as an isolated project named `short-link-e2e`.
 
 ```mermaid
 sequenceDiagram
@@ -88,135 +99,135 @@ sequenceDiagram
     participant Server as server (Play :9000)
     participant Runn as runn (E2E Runner)
 
-    Make->>Server: コンテナ起動 (SHORTENER_BASE_URL固定)
-    Make->>Front: コンテナ起動 (ヘルスチェック開始)
-    loop ヘルスチェックポーリング
+    Make->>Server: Start container (fixed SHORTENER_BASE_URL)
+    Make->>Front: Start container (start healthcheck)
+    loop Healthcheck polling
         Front->>Front: GET /api/v1/health (Vite -> Play)
     end
-    Note over Front,Server: Play の初回コンパイル完了後、healthy に遷移
-    Make->>Runn: runn コンテナ起動
-    Runn->>Front: HTTP リクエスト送信 (http://front:5173/...)
-    Front->>Server: プロキシ転送 (/api/*, /{code})
-    Server-->>Front: レスポンス返却
-    Front-->>Runn: レスポンス返却 (検証・アサーション)
-    Runn-->>Make: 終了ステータス返却
-    alt 失敗時
-        Make->>Make: server / front の直近ログ 100 行を出力
+    Note over Front,Server: Transitions to healthy after Play initial compilation finishes
+    Make->>Runn: Start runn container
+    Runn->>Front: Send HTTP request (http://front:5173/...)
+    Front->>Server: Proxy forward (/api/*, /{code})
+    Server-->>Front: Return response
+    Front-->>Runn: Return response (verification and assertions)
+    Runn-->>Make: Return exit status
+    alt On failure
+        Make->>Make: Output last 100 lines of server / front logs
     end
-    Make->>Make: コンテナ停止・削除 (down, rm -fsv)
+    Make->>Make: Stop and remove containers (down, rm -fsv)
 ```
 
-### 主な特徴と設計意図
+### Key Features and Design Intent
 
-1. **開発環境 (`make up`) との完全な分離**:
-   - `compose.e2e.yaml` 内で `ports: !reset []` を指定し、ホストへのポート公開を無効化しています。そのため、手元で `make up` が動いている最中でもポートの競合を起こさずに E2E を並行実行できます。
-   - インメモリのデータ保持領域およびコンパイル成果物 (`server-target`) もプロジェクトごとに分離されています。
-2. **キャッシュ共有による高速化**:
-   - sbt および coursier のキャッシュボリュームのみ、開発用の名前付きボリューム (`short-link-service_sbt-cache` / `coursier-cache`) を共有するように定義し、テストのたびに依存ライブラリを再ダウンロードする無駄を省いています。
-3. **ブラウザと同じ経路での検証**:
-   - runn は API サーバ (`server:9000`) に直接リクエストを送るのではなく、フロントエンド (`http://front:5173`) に対してリクエストを送ります。Vite のリバースプロキシ設定も含めて本番同等の通信経路を検証します。
-4. **自動クリーンアップとログ出力**:
-   - テスト完了後は合否に関わらず自動的にコンテナと匿名ボリュームが破棄されます。
-   - シナリオが 1 つでも失敗した場合は、破棄直前に `server` と `front` の末尾 100 行のログを自動的にターミナルへ出力するため、原因究明が容易です。
-5. **固定の環境変数**:
-   - 実行者のローカルの `.env` の内容に左右されないよう、server の環境変数 `SHORTENER_BASE_URL` は `https://example.com` に固定されています。
+1. **Complete isolation from development environment (`make up`)**:
+   - `compose.e2e.yaml` specifies `ports: !reset []`, disabling port publishing to the host. Thus E2E can run concurrently without port collisions even while `make up` is running locally.
+   - In-memory data store and compilation artifacts (`server-target`) are also isolated per project.
+2. **Acceleration via cache sharing**:
+   - Shares development named volumes (`short-link-service_sbt-cache` / `coursier-cache`) for sbt and coursier caches only, avoiding wasteful re-downloading of dependency libraries on every test run.
+3. **Verification via identical browser route**:
+   - runn sends requests to the frontend (`http://front:5173`) rather than directly to the API server (`server:9000`). Tests production-equivalent communication paths including Vite reverse proxy configuration.
+4. **Automatic cleanup and log output**:
+   - After test completion, containers and anonymous volumes are automatically destroyed regardless of pass/fail.
+   - If any scenario fails, the last 100 lines of `server` and `front` logs are automatically printed to the terminal right before cleanup, facilitating troubleshooting.
+5. **Fixed environment variables**:
+   - The server environment variable `SHORTENER_BASE_URL` is fixed to `https://example.com` to prevent influence by local `.env` contents.
 
 ---
 
-## シナリオ一覧とテスト内容
+## Scenarios and Test Coverage
 
-`tests/scenarios/` に配置されている YAML ファイルと、各シナリオの検証内容は以下の通りです（現在 4 シナリオ、全 16 ステップ）。
+YAML files in `tests/scenarios/` and their test coverage (currently 4 scenarios, 16 steps total):
 
 ### 1. `health.yml`
 
-- **ラベル**: `smoke`
-- **内容**:
-  - `GET /api/v1/health` にリクエストを送信し、ステータス `200` および `{"status":"ok"}` が返ることを確認。
-  - フロントエンド経由でバックエンドまで正しく疎通していることの最小限の確認。
+- **Label**: `smoke`
+- **Coverage**:
+  - Sends request to `GET /api/v1/health`, verifying status `200` and `{"status":"ok"}`.
+  - Minimal verification of correct connectivity through frontend to backend.
 
 ### 2. `create_link.yml`
 
-- **ラベル**: `links`
-- **内容**:
-  - `POST /api/v1/links` に正常な URL を送信し、ステータス `201 Created` が返ること。
-  - レスポンスの `code` が英数字 8 文字であること、`shortUrl` が指定ドメインとコードで構成されていること。
-  - **同一 URL の同一コード返却**: 同じ元 URL を再度 POST した場合に、新しいコードが採番されず、全く同一の `code` が返却されること。
+- **Label**: `links`
+- **Coverage**:
+  - Sends valid URL to `POST /api/v1/links`, verifying status `201 Created`.
+  - Verifies response `code` is 8 alphanumeric characters and `shortUrl` consists of specified domain and code.
+  - **Same code returned for same URL**: Verifies that re-POSTing the same original URL does not allocate a new code, returning the identical `code`.
 
 ### 3. `create_link_validation.yml`
 
-- **ラベル**: `links`, `validation`
-- **内容**:
-  - 不正なリクエストに対して適切な 400 番台エラーが返ることの検証。
-  - `url` プロパティの欠落、数値など文字列以外の入力 → 400 `invalid_request`
-  - 空文字、ユーザー認証情報付き URL (`user:pass@host`)、非対応スキーム (`ftp://`) → 400 `invalid_url` (`reason` 付き)
-  - 自サービス自身の URL を短縮しようとした場合 → 400 `self_reference` (リダイレクトループ防止)
+- **Label**: `links`, `validation`
+- **Coverage**:
+  - Verifies appropriate 4xx errors are returned for invalid requests.
+  - Missing `url` property, non-string inputs such as numbers → 400 `invalid_request`
+  - Empty string, URL with user credentials (`user:pass@host`), unsupported scheme (`ftp://`) → 400 `invalid_url` (with `reason`)
+  - Attempting to shorten this service's own URL → 400 `self_reference` (prevent redirect loops)
 
 ### 4. `resolve_link.yml`
 
-- **ラベル**: `links`
-- **内容**:
-  - **短縮リンクのリダイレクト (`GET /{code}`)**:
-    - 発行済みコードへのアクセスでステータス `302 Found` となり、`Location` ヘッダに元 URL が設定されること（リダイレクトを自動追従せずにヘッダを検証）。
-    - 存在しない未発行コードへのアクセスで `404 Not Found` が返ること。
-  - **短縮 URL の復元 API (`GET /api/v1/links/resolve?shortUrl=...`)**:
-    - 発行済みの短縮 URL 全体をクエリに渡すと、ステータス `200` で元 URL を含む情報が返ること。
-    - 存在しない短縮 URL を渡すと、`404 Not Found` (`not_found`) が返ること。
-    - 自サービスのドメインや形式と異なる URL を渡すと、`400 Bad Request` (`not_short_url`) が返ること。
-    - クエリパラメータが空の場合、`400 Bad Request` (`invalid_request`) が返ること。
+- **Label**: `links`
+- **Coverage**:
+  - **Short link redirection (`GET /{code}`)**:
+    - Visiting an issued code returns status `302 Found` with `Location` header set to original URL (verifies header without auto-following redirects).
+    - Visiting a nonexistent unissued code returns `404 Not Found`.
+  - **Short URL resolve API (`GET /api/v1/links/resolve?shortUrl=...`)**:
+    - Passing an entire issued short URL in the query returns status `200` with information including original URL.
+    - Passing a nonexistent short URL returns `404 Not Found` (`not_found`).
+    - Passing a URL different from this service's domain or format returns `400 Bad Request` (`not_short_url`).
+    - When query parameter is empty, returns `400 Bad Request` (`invalid_request`).
 
 ---
 
-## 環境変数
+## Environment Variables
 
-シナリオ内で参照される環境変数です。`compose.e2e.yaml` の `runn` サービスで注入されています。
+Environment variables referenced in scenarios, injected by the `runn` service in `compose.e2e.yaml`:
 
-| 環境変数名                | デフォルト値                     | Compose での値                 | 説明                                                                                                           |
-| ------------------------- | -------------------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
-| `E2E_BASE_URL`            | `http://localhost:9000`          | `http://front:5173`            | テスト対象のベース URL。Compose では Vite プロキシ経由。                                                       |
-| `E2E_SELF_URL`            | `http://localhost:9000/abcd1234` | `https://example.com/abcd1234` | 自己参照エラー検証用のダミー URL。API サーバの `SHORTENER_BASE_URL` とホスト名を一致させておく必要があります。 |
-| `E2E_UNKNOWN_SHORT_URL`   | `https://example.com/zzzzzzzz`   | `https://example.com/zzzzzzzz` | 存在しない短縮 URL の復元検証用 URL。                                                                          |
-| `CF_ACCESS_CLIENT_ID`     | (空)                             | (空)                           | Cloudflare Access のサービストークン。`make e2e-remote` が SSM から渡す。ローカルでは空で送られ、無視される。  |
-| `CF_ACCESS_CLIENT_SECRET` | (空)                             | (空)                           | 同上のシークレット。                                                                                           |
+| Environment Variable | Default Value | Value in Compose | Description |
+| --- | --- | --- | --- |
+| `E2E_BASE_URL` | `http://localhost:9000` | `http://front:5173` | Target base URL. Via Vite proxy in Compose. |
+| `E2E_SELF_URL` | `http://localhost:9000/abcd1234` | `https://example.com/abcd1234` | Dummy URL for verifying self-reference errors. Hostname must match API server's `SHORTENER_BASE_URL`. |
+| `E2E_UNKNOWN_SHORT_URL` | `https://example.com/zzzzzzzz` | `https://example.com/zzzzzzzz` | URL for verifying resolution of nonexistent short URLs. |
+| `CF_ACCESS_CLIENT_ID` | (Empty) | (Empty) | Cloudflare Access service token. Passed from SSM by `make e2e-remote`. Sent empty and ignored locally. |
+| `CF_ACCESS_CLIENT_SECRET` | (Empty) | (Empty) | Secret for the above. |
 
-### デプロイ済みの環境に流す (`make e2e-remote`)
+### Running Against Deployed Environments (`make e2e-remote`)
 
-develop / staging は Cloudflare Access で守られているので、サービストークンのヘッダ (`CF-Access-Client-Id` / `CF-Access-Client-Secret`) を付けて流します。
-各シナリオの `vars.access` に YAML のアンカーとして定義し、すべてのステップの `headers` で参照しています。シナリオを足すときも、ステップに `headers: *access` (ほかのヘッダと並べるなら `<<: *access`) を付けてください。
+Because develop / staging are protected by Cloudflare Access, run with service token headers (`CF-Access-Client-Id` / `CF-Access-Client-Secret`).
+Defined as a YAML anchor in `vars.access` in each scenario, referenced in `headers` across all steps. When adding scenarios, attach `headers: *access` (or `<<: *access` alongside other headers) to steps.
 
 ```sh
 make e2e-remote ENV=develop
 ```
 
-- 向き先は `infra/terraform/envs/<ENV>` の output `public_base_url`、`E2E_SELF_URL` / `E2E_UNKNOWN_SHORT_URL` は output `shortener_base_url` (develop は `https://example.com`) から作り、トークンは SSM (`/short-link-<ENV>/e2e/access-client-{id,secret}`) から読みます。
-- Turnstile をかけた環境 (staging / prod) では `E2E_TURNSTILE=on` を渡し、短縮・復元のシナリオ (`if: env.E2E_TURNSTILE != 'on'`) を飛ばして、トークンの無いリクエストが 403 `turnstile_failed` で断られることを `turnstile.yml` で確かめます。Turnstile は人の操作を確かめる仕組みなので、runn からは通せません。機能の E2E は、Turnstile をかけない develop で流します。
-- prod は Cloudflare Access をかけていないので、サービストークンは読まずに流します。
-- Worker の回数制限 (API は IP ごとに 1 分 20 回) があるので、続けて流すときは 1 分空けてください。
-- `--debug` はリクエストヘッダ (トークンのシークレット) をそのまま出力します。調べるときだけ手元で使い、出力を残さないでください。
+- Target is `public_base_url` output from `infra/terraform/envs/<ENV>`, `E2E_SELF_URL` / `E2E_UNKNOWN_SHORT_URL` are created from `shortener_base_url` output (`https://example.com` for develop), and tokens are read from SSM (`/short-link-<ENV>/e2e/access-client-{id,secret}`).
+- In Turnstile-enabled environments (staging / prod), pass `E2E_TURNSTILE=on` to skip shorten/resolve scenarios (`if: env.E2E_TURNSTILE != 'on'`) and verify that tokenless requests are rejected with 403 `turnstile_failed` via `turnstile.yml`. Turnstile verifies human interaction and cannot be passed from runn. Functional E2E is run on develop without Turnstile.
+- prod does not use Cloudflare Access, so runs without reading service tokens.
+- Due to Worker rate limiting (20 API calls/min per IP), wait 1 minute before subsequent runs.
+- `--debug` outputs request headers (token secret) as-is. Use locally only when troubleshooting; do not leave logs behind.
 
 ---
 
-## シナリオの追加とツール管理
+## Adding Scenarios and Tool Management
 
-### runn のバージョン管理
+### runn Version Management
 
-- runn の実行イメージは `compose.e2e.yaml` 内で `ghcr.io/k1low/runn:v1.11.0` として指定されています。
-- また、`.devcontainer/Dockerfile` 内にも同バージョンのバイナリが組み込まれています。
-- **runn のバージョンをアップデートする場合は、上記 2 箇所のバージョン指定を必ず同時に更新してください。**
+- The runn execution image is specified in `compose.e2e.yaml` as `ghcr.io/k1low/runn:v1.11.0`.
+- The same version binary is also built into `.devcontainer/Dockerfile`.
+- **When updating the runn version, be sure to update the version specifications in both locations above simultaneously.**
 
-### 新規シナリオの追加手順
+### Procedure for Adding a New Scenario
 
-1. `tests/scenarios/` 配下に新しい `.yml` ファイルを作成します。
-2. 以下のテンプレートに沿ってシナリオを記述します。
+1. Create a new `.yml` file under `tests/scenarios/`.
+2. Write the scenario following the template below:
 
 ```yaml
-desc: 新しい機能の検証シナリオ
+desc: Scenario for verifying new features
 runners:
   req: ${E2E_BASE_URL}
 labels:
   - links
 steps:
   step1:
-    desc: POST リクエストの検証
+    desc: Verify POST request
     req:
       /api/v1/links:
         post:
@@ -228,8 +239,8 @@ steps:
       current.res.body.code != ""
 ```
 
-3. シナリオの構文チェックを行います。
+3. Check scenario syntax:
    ```sh
-   runn list -l "tests/scenarios/新しいシナリオ.yml" </dev/null
+   runn list -l "tests/scenarios/new_scenario.yml" </dev/null
    ```
-4. `make e2e` を実行してシナリオが正常にパスすることを確認します。
+4. Run `make e2e` and confirm that scenarios pass successfully.

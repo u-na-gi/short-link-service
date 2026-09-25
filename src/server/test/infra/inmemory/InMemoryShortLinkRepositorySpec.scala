@@ -11,7 +11,7 @@ class InMemoryShortLinkRepositorySpec extends AnyWordSpec with Matchers with Sca
 
   "InMemoryShortLinkRepository.saveIfAbsent" should {
 
-    "未登録ならコードと URL の両方で引けるように保存する" in {
+    "save so the link can be found by both code and URL when not registered" in {
       val repository = new InMemoryShortLinkRepository()
       val link = ShortLink("abcd1234", url("https://example.com"))
 
@@ -20,7 +20,7 @@ class InMemoryShortLinkRepositorySpec extends AnyWordSpec with Matchers with Sca
       repository.findByUrl(url("https://example.com")).futureValue shouldBe Some(link)
     }
 
-    "コードが使用済みなら CodeTaken を返し、上書きしない" in {
+    "return CodeTaken without overwriting when the code is used" in {
       val repository = new InMemoryShortLinkRepository()
       val first = ShortLink("abcd1234", url("https://a.example"))
       repository.saveIfAbsent(first).futureValue
@@ -31,7 +31,7 @@ class InMemoryShortLinkRepositorySpec extends AnyWordSpec with Matchers with Sca
       repository.findByUrl(url("https://b.example")).futureValue shouldBe None
     }
 
-    "URL が登録済みなら既存のリンクを UrlExists で返す" in {
+    "return the existing link as UrlExists when the URL is registered" in {
       val repository = new InMemoryShortLinkRepository()
       val first = ShortLink("abcd1234", url("https://example.com"))
       repository.saveIfAbsent(first).futureValue
@@ -44,9 +44,9 @@ class InMemoryShortLinkRepositorySpec extends AnyWordSpec with Matchers with Sca
     }
   }
 
-  "InMemoryShortLinkRepository.saveIfAbsent (件数の上限)" should {
+  "InMemoryShortLinkRepository.saveIfAbsent (count limit)" should {
 
-    "上限に達したら Full を返し、保存しない" in {
+    "return Full and not save when the limit is reached" in {
       val repository = new InMemoryShortLinkRepository(maxLinks = 2)
       repository.saveIfAbsent(ShortLink("aaaa0001", url("https://a.example"))).futureValue
       repository.saveIfAbsent(ShortLink("aaaa0002", url("https://b.example"))).futureValue
@@ -57,7 +57,7 @@ class InMemoryShortLinkRepositorySpec extends AnyWordSpec with Matchers with Sca
       repository.findByUrl(url("https://c.example")).futureValue shouldBe None
     }
 
-    "上限に達していても、登録済みの URL なら既存のリンクを返す" in {
+    "return the existing link for a registered URL even at the limit" in {
       val repository = new InMemoryShortLinkRepository(maxLinks = 1)
       val first = ShortLink("aaaa0001", url("https://a.example"))
       repository.saveIfAbsent(first).futureValue
@@ -66,7 +66,7 @@ class InMemoryShortLinkRepositorySpec extends AnyWordSpec with Matchers with Sca
         SaveResult.UrlExists(first)
     }
 
-    "保存しなかったとき (コードの被り・URL の登録済み) は件数を数えない" in {
+    "not count links that were not saved (code taken, URL registered)" in {
       val repository = new InMemoryShortLinkRepository(maxLinks = 2)
       repository.saveIfAbsent(ShortLink("aaaa0001", url("https://a.example"))).futureValue
       repository.saveIfAbsent(ShortLink("aaaa0001", url("https://b.example"))).futureValue shouldBe
@@ -74,12 +74,12 @@ class InMemoryShortLinkRepositorySpec extends AnyWordSpec with Matchers with Sca
       repository.saveIfAbsent(ShortLink("aaaa0002", url("https://a.example"))).futureValue shouldBe
         SaveResult.UrlExists(ShortLink("aaaa0001", url("https://a.example")))
 
-      // 保存したのは 1 件だけなので、まだ 1 件入る
+      // Only 1 link was saved, so there is room for 1 more
       repository.saveIfAbsent(ShortLink("aaaa0003", url("https://c.example"))).futureValue shouldBe
         SaveResult.Saved
     }
 
-    "並行に保存しても上限を超えない" in {
+    "not go over the limit with concurrent saves" in {
       import scala.concurrent.{ExecutionContext, Future}
       given ExecutionContext = ExecutionContext.global
       val repository = new InMemoryShortLinkRepository(maxLinks = 50)
@@ -99,7 +99,7 @@ class InMemoryShortLinkRepositorySpec extends AnyWordSpec with Matchers with Sca
 
   "InMemoryShortLinkRepository.findByUrl" should {
 
-    "未登録なら None" in {
+    "return None when not registered" in {
       new InMemoryShortLinkRepository().findByUrl(url("https://example.com")).futureValue shouldBe
         None
     }

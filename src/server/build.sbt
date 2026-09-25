@@ -8,11 +8,11 @@ lazy val root = (project in file(".")).enablePlugins(PlayScala)
 scalaVersion := "3.3.6"
 
 libraryDependencies += guice
-// URL のパースと正規化 (punycode 化・ホストの小文字化) に使う。5 系は JVM 向けに okhttp-jvm を指定する。
+// Used to parse and normalize URLs (punycode, lowercase host). For 5.x, use okhttp-jvm for the JVM.
 libraryDependencies += "com.squareup.okhttp3" % "okhttp-jvm" % "5.5.0"
-// ログを JSON で出す (conf/logback.xml)。8 系は Jackson 2.18 を連れてきて、Play が使う Jackson 2.14 を
-// 押し上げてしまう (jackson-module-scala 2.14 が起動時に版を検査して落ちる)。9 系は Jackson 3 で
-// パッケージ名 (tools.jackson) が別なので、Play の Jackson 2 とぶつからない。
+// Writes logs as JSON (conf/logback.xml). 8.x pulls in Jackson 2.18 and bumps the Jackson 2.14 that Play uses
+// (jackson-module-scala 2.14 checks the version at startup and fails). 9.x uses Jackson 3 with a different
+// package name (tools.jackson), so it does not clash with Play's Jackson 2.
 libraryDependencies += "net.logstash.logback" % "logstash-logback-encoder" % "9.0"
 libraryDependencies += "org.scalatestplus.play" %% "scalatestplus-play" % "7.0.2" % Test
 

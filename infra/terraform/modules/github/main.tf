@@ -1,5 +1,5 @@
-# GitHub の Environment 1 つ分: デプロイできるブランチ・タグ、承認者、変数とシークレット。
-# シークレットの値は Terraform の state (S3、暗号化) にも載る。
+# One GitHub Environment: deployable branches/tags, reviewers, variables, and secrets.
+# Secret values are also stored in Terraform state (S3, encrypted).
 
 locals {
   restricted = length(var.branch_patterns) + length(var.tag_patterns) > 0
@@ -9,9 +9,9 @@ resource "github_repository_environment" "this" {
   repository  = var.repository
   environment = var.environment
 
-  # 承認者が自分 1 人なので、自分のデプロイを自分で承認できるようにする
+  # The only reviewer is me, so allow approving my own deployments
   prevent_self_review = false
-  # 承認が要る環境 (prod) は、admin でも承認を飛ばせない
+  # Environments that need approval (prod) cannot skip it, even for admins
   can_admins_bypass = length(var.reviewer_user_ids) == 0
 
   dynamic "reviewers" {
@@ -56,7 +56,7 @@ resource "github_actions_environment_variable" "this" {
 }
 
 resource "github_actions_environment_secret" "this" {
-  # 名前は秘密ではないので for_each のキーに使う (値は sensitive のまま)
+  # Names are not secret, so use them as for_each keys (values stay sensitive)
   for_each = toset(nonsensitive(keys(var.secrets)))
 
   repository      = var.repository

@@ -1,4 +1,4 @@
 locals {
-  # リソース名の接頭辞。例: short-link-develop (modules/aws と揃える)
+  # Resource name prefix. e.g. short-link-develop (same as modules/aws)
   name = "short-link-${var.env}"
 }

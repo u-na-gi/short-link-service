@@ -1,8 +1,8 @@
 .PHONY: up down logs logs-server e2e e2e-remote deploy-front
 
-# 開発用の compose (compose.yaml)。.env は cp .env.example .env で用意する
+# Dev compose (compose.yaml). Create .env with cp .env.example .env
 
-# --renew-anon-volumes: package.json を変えたときに、前回の node_modules が残らないようにする
+# --renew-anon-volumes: do not keep the previous node_modules after package.json changes
 up:
 	docker compose up -d --build --renew-anon-volumes
 
@@ -12,14 +12,14 @@ down:
 logs:
 	docker compose logs -f
 
-# server のログは JSON で 1 行ずつ出るので jq で整形する。sbt 自身の出力など JSON でない行はそのまま出す
+# Server logs are one JSON object per line, so format them with jq. Non-JSON lines (e.g. sbt's own output) pass through as-is
 logs-server:
 	docker compose logs -f --no-log-prefix server | jq -R 'fromjson? // .'
 
-# E2E 専用の compose (compose.e2e.yaml を重ねた別プロジェクト)。開発用が起動していても干渉しない。
-# server / front を立ち上げてシナリオを流し、終わったら結果に関わらず片付ける。
-# 片付けるとログも消えるので、失敗したときだけ先に server / front のログを出す。
-# runn に渡す引数は E2E_ARGS で足す (例: make e2e E2E_ARGS=--debug)
+# E2E-only compose (a separate project that layers compose.e2e.yaml). Does not interfere with a running dev stack.
+# Starts server / front, runs the scenarios, and tears down afterwards regardless of the result.
+# Tearing down also removes the logs, so print the server / front logs first, only on failure.
+# Pass extra runn arguments via E2E_ARGS (e.g. make e2e E2E_ARGS=--debug)
 E2E_COMPOSE := docker compose -p short-link-e2e -f compose.yaml -f compose.e2e.yaml
 
 e2e:
@@ -31,26 +31,26 @@ e2e:
 	$(E2E_COMPOSE) down; \
 	exit $$code
 
-# デプロイ済みの環境に同じシナリオを流す。例: make e2e-remote ENV=develop
-# 向き先は Terraform の output (public_base_url)。自己参照・未発行の短縮 URL は短縮 URL のベース (shortener_base_url) で作る
-# (develop は要件どおり example.com で、サイトのホストと違う)。
-# - Cloudflare Access をかけた環境 (develop / staging) は、サービストークンを SSM から読んでヘッダで付ける。
-#   トークンはコマンドラインに載せず、環境変数で runn に渡す。
-# - Turnstile をかけた環境 (staging / prod) は E2E_TURNSTILE=on で、短縮・復元のシナリオを飛ばし、
-#   トークンの無いリクエストが 403 で断られることを確かめる (turnstile.yml)。
-# Worker の回数制限 (API は IP ごとに 1 分 20 回) があるので、続けて流すときは 1 分空ける。
-# 最初にヘルスチェックを 1 回叩き、ステータスと Cloudflare の判定 (Access のログインへの 302、cf-mitigated など) を出す。
-# シナリオが全部落ちたときに、アプリの問題か入口 (Access / ボット対策) の問題かを切り分けるため。
-# --debug / --debug-on-failure はリクエストヘッダ (トークンのシークレット) をそのまま出すので、ここでは付けない。
-# 手元で調べるときだけ E2E_ARGS=--debug で足し、出力を CI のログなどに残さない。
+# Run the same scenarios against a deployed environment. e.g. make e2e-remote ENV=develop
+# The target is the Terraform output (public_base_url). Self-referencing / unissued short URLs are built from the short URL base (shortener_base_url)
+# (develop uses example.com per the requirements, which differs from the site host).
+# - Environments behind Cloudflare Access (develop / staging): read the service token from SSM and send it as headers.
+#   The token is not put on the command line; it is passed to runn via environment variables.
+# - Environments behind Turnstile (staging / prod): with E2E_TURNSTILE=on, skip the shorten/resolve scenarios and
+#   check that requests without a token are rejected with 403 (turnstile.yml).
+# The Worker has a rate limit (API: 20 requests per minute per IP), so wait a minute between consecutive runs.
+# First hit the health check once and print the status and Cloudflare's verdict (302 to the Access login, cf-mitigated, etc.).
+# When every scenario fails, this tells whether the problem is the app or the entry point (Access / bot protection).
+# --debug / --debug-on-failure print request headers (the token secret) as-is, so they are not added here.
+# Add them with E2E_ARGS=--debug only when investigating locally, and do not leave the output in CI logs etc.
 ENV ?= develop
 
-# 実行中に読んだ秘密の値を、GitHub Actions の公開ログで伏せ字にする (手元では何もしない)
+# Mask secret values read during the run in the public GitHub Actions log (does nothing locally)
 MASK = mask() { if [ -n "$${GITHUB_ACTIONS:-}" ] && [ -n "$$1" ]; then echo "::add-mask::$$1"; fi; }
 
 RUNN_IMAGE := ghcr.io/k1low/runn:v1.11.0
 
-# 手元では SSO のプロファイルを使う。CI (GitHub Actions は CI=true) は OIDC の認証情報を環境変数で持つ
+# Locally, use the SSO profile. CI (GitHub Actions sets CI=true) has OIDC credentials in environment variables
 ifndef CI
 export AWS_PROFILE ?= short-link-develop
 endif
@@ -81,13 +81,13 @@ e2e-remote:
 		-v $${LOCAL_WORKSPACE_FOLDER:-$$PWD}/tests/scenarios:/scenarios:ro \
 		$(RUNN_IMAGE) run "/scenarios/*.yml" --verbose $(E2E_ARGS)
 
-# front (Cloudflare Worker) を ENV に deploy する。例: make deploy-front ENV=staging
-# Turnstile を使う環境 (staging / prod) では、Terraform の output からサイトキーをビルドに、シークレットを
-# Worker の secret に渡す。シークレットは一時ファイル (600) に書いて --secrets-file で同じバージョンに載せ、
-# 「Turnstile は on なのにシークレットが無い」瞬間を作らない。コマンドラインには載せない。
-# Cloudflare の認証情報は infra/.envrc.local (CI では環境変数) から読む。
-# 値が null の output (Turnstile を使わない develop) は state に載らないので、無ければ空として扱う。
-# deploy の前に、wrangler.jsonc の VPC Service の ID・ホスト名・Turnstile の有無が output と合っているか確かめる。
+# Deploy front (Cloudflare Worker) to ENV. e.g. make deploy-front ENV=staging
+# In environments that use Turnstile (staging / prod), pass the site key from the Terraform output to the build and the secret to
+# the Worker secret. The secret is written to a temp file (600) and uploaded with --secrets-file in the same version,
+# so there is never a moment where "Turnstile is on but the secret is missing". It is not put on the command line.
+# Cloudflare credentials are read from infra/.envrc.local (environment variables in CI).
+# Outputs whose value is null (develop, which does not use Turnstile) are not stored in state, so treat missing ones as empty.
+# Before deploying, check that the VPC Service ID, hostname, and Turnstile on/off in wrangler.jsonc match the outputs.
 deploy-front:
 	@$(MASK); set -a; [ -f infra/.envrc.local ] && . ./infra/.envrc.local; set +a; \
 	outputs=$$(terraform -chdir=infra/terraform/envs/$(ENV) output -json) || exit 1; \

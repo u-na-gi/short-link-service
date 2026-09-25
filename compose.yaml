@@ -1,9 +1,9 @@
-# 開発用。make up で起動する。コンテナに入って作業する想定はなく、ホスト (または devcontainer) で
-# 編集したソースをマウントし、sbt run と Vite のホットリロードで反映させる。
+# For development. Start with make up. You are not expected to work inside the containers; source edited on the host
+# (or in the devcontainer) is mounted and picked up by sbt run and Vite hot reload.
 #
-# devcontainer はホストの Docker を使う (docker-outside-of-docker) ので、バインドマウント元は
-# ホスト側で解釈される。devcontainer.json の remoteEnv が LOCAL_WORKSPACE_FOLDER にホストの
-# パスを入れる。ホストから直接打つときは未設定なので、カレントディレクトリになる。
+# The devcontainer uses the host's Docker (docker-outside-of-docker), so bind mount sources are
+# interpreted on the host. remoteEnv in devcontainer.json sets LOCAL_WORKSPACE_FOLDER to the host
+# path. When run directly from the host it is unset, so the current directory is used.
 name: short-link-service
 
 services:
@@ -11,33 +11,33 @@ services:
     build: ./src/server
     env_file: .env
     environment:
-      # Vite のプロキシは Host をプロキシ先 (server:9000) に書き換えて流す。
-      # Play の既定の許可リスト (localhost など) には無いので足す
+      # Vite's proxy rewrites Host to the proxy target (server:9000).
+      # That is not in Play's default allowed list (localhost etc.), so add it
       PLAY_EXTRA_ALLOWED_HOST: server
-      # sbt の進捗表示と色付けは制御文字としてログに混ざり、JSON のログが読めなくなるので止める
+      # sbt's progress display and colors end up in the logs as control characters and make JSON logs unreadable, so turn them off
       SBT_OPTS: -Dsbt.supershell=false -Dsbt.color=false
     volumes:
       - ${LOCAL_WORKSPACE_FOLDER:-.}/src/server:/app
-      # ビルド成果物は devcontainer の sbt / Metals と取り合わないよう、コンテナ専用にする
+      # Keep build outputs container-only so they do not conflict with the devcontainer's sbt / Metals
       - server-target:/app/target
       - server-project-target:/app/project/target
-      # 依存の取得を毎回やり直さないためのキャッシュ
+      # Cache so dependencies are not fetched again every time
       - sbt-cache:/home/dev/.sbt
       - coursier-cache:/home/dev/.cache/coursier
     ports:
       - "9000:9000"
-    # sbt run は標準入力が閉じると Enter を押したとみなして止まる
+    # sbt run treats a closed stdin as Enter being pressed and stops
     stdin_open: true
     tty: true
 
   front:
     build: ./src/front
     environment:
-      # Vite のプロキシが /api と /{code} を流す先
+      # Where Vite's proxy forwards /api and /{code}
       API_ORIGIN: http://server:9000
     volumes:
       - ${LOCAL_WORKSPACE_FOLDER:-.}/src/front:/app
-      # イメージで入れた node_modules を使う。make up の --renew-anon-volumes で毎回作り直す
+      # Use the node_modules installed in the image. make up's --renew-anon-volumes recreates it every time
       - /app/node_modules
     ports:
       - "5173:5173"

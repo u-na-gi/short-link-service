@@ -1,158 +1,158 @@
-# フロントエンド (`src/front`)
+# Front end (`src/front`)
 
-URL の短縮および短縮 URL からの復元を行う 1 画面の Web アプリケーションです。ログイン不要で即座に利用できます。
+A single-page web application that shortens URLs and resolves short URLs. No login required; it can be used right away.
 
-## 目次
+## Contents
 
-- [技術スタック](#技術スタック)
-- [ファイル構成と役割](#ファイル構成と役割)
-- [開発コマンド](#開発コマンド)
-- [開発用プロキシとサーバ接続](#開発用プロキシとサーバ接続)
-- [仕様・実装方針](#仕様実装方針)
-- [プロダクションビルド](#プロダクションビルド)
-
----
-
-## 技術スタック
-
-| 分類                        | 採用技術               | バージョン / 補足 |
-| --------------------------- | ---------------------- | ----------------- |
-| ランタイム / パッケージ管理 | [Bun](https://bun.sh/) | 1.4+              |
-| UI ライブラリ               | React                  | 19.3              |
-| ビルドツール / 開発サーバ   | Vite                   | 8.3               |
-| 言語                        | TypeScript             | 7.0               |
-| コードフォーマッタ          | Prettier               | 3.9               |
-| テストランナー              | Bun Test               | `src/url.test.ts` |
+- [Tech stack](#tech-stack)
+- [Files and roles](#files-and-roles)
+- [Development commands](#development-commands)
+- [Dev proxy and server connection](#dev-proxy-and-server-connection)
+- [Spec and implementation policy](#spec-and-implementation-policy)
+- [Production build](#production-build)
 
 ---
 
-## ファイル構成と役割
+## Tech stack
+
+| Category                  | Technology             | Version / notes   |
+| ------------------------- | ---------------------- | ----------------- |
+| Runtime / package manager | [Bun](https://bun.sh/) | 1.4+              |
+| UI library                | React                  | 19.3              |
+| Build tool / dev server   | Vite                   | 8.3               |
+| Language                  | TypeScript             | 7.0               |
+| Code formatter            | Prettier               | 3.9               |
+| Test runner               | Bun Test               | `src/url.test.ts` |
+
+---
+
+## Files and roles
 
 ```
 src/front/
-├── Dockerfile          # 開発用コンテナ定義 (oven/bun ベース)
-├── package.json        # 依存パッケージおよびスクリプト定義
-├── vite.config.ts      # Vite 設定 (プロキシ・待受ホスト定義)
-├── tsconfig.json       # TypeScript 設定
-├── index.html          # エントリ HTML
+├── Dockerfile          # Dev container definition (based on oven/bun)
+├── package.json        # Dependencies and scripts
+├── vite.config.ts      # Vite config (proxy and listen host)
+├── tsconfig.json       # TypeScript config
+├── index.html          # Entry HTML
 └── src/
-    ├── main.tsx        # React アプリケーションのエントリポイント
-    ├── App.tsx         # メインコンポーネント (短縮フォーム・結果表示・コピー機能)
-    ├── ResolveForm.tsx # 復元フォームコンポーネント (短縮 URL からの元 URL 復元)
-    ├── api.ts          # API クライアント・レスポンス型定義・エラーメッセージ変換
-    ├── url.ts          # 送信前の URL 簡易バリデーション・エラー文言定義
-    ├── url.test.ts     # url.ts の単体テスト
-    └── styles.css      # スタイルシート
+    ├── main.tsx        # React application entry point
+    ├── App.tsx         # Main component (shorten form, result display, copy)
+    ├── ResolveForm.tsx # Resolve form component (original URL from a short URL)
+    ├── api.ts          # API client, response types, error message mapping
+    ├── url.ts          # Simple URL validation before sending, error text
+    ├── url.test.ts     # Unit tests for url.ts
+    └── styles.css      # Stylesheet
 ```
 
-### 主要ファイルの責務
+### Responsibilities of the main files
 
 - **`src/App.tsx`**:
-  - 画面上部の「短縮フォーム」と発行結果の表示を担当。
-  - 発行された短縮 URL のリンク表示、クリップボードへのコピー機能、元 URL の表示を行います。
-  - 画面下部に `ResolveForm` を配置します。
+  - Handles the "shorten form" at the top of the page and shows the result.
+  - Shows the created short URL as a link, copies it to the clipboard, and shows the original URL.
+  - Places `ResolveForm` at the bottom of the page.
 - **`src/ResolveForm.tsx`**:
-  - 画面下部の「復元フォーム」と復元結果の表示を担当。
-  - 短縮 URL 全体を受け取り、元 URL を表示します。
+  - Handles the "resolve form" at the bottom of the page and shows the result.
+  - Takes a whole short URL and shows the original URL.
 - **`src/url.ts`**:
-  - 送信前に「明らかに不正な入力値」を検知するバリデーションロジック (`findUrlProblem`)。
-  - サーバ側の `domain.Url` と対応させたエラー種別 (`UrlProblem`) を定義しています。
+  - Validation logic (`findUrlProblem`) that detects "clearly invalid input" before sending.
+  - Defines error kinds (`UrlProblem`) that mirror the server's `domain.Url`.
 - **`src/api.ts`**:
-  - バックエンド API (`/api/v1/links`, `/api/v1/links/resolve`) への通信を担当。
-  - サーバから返却される機械可読なエラーコード（`invalid_url`, `self_reference`, `not_short_url`, `not_found` など）を、利用者が次に何をすべきか直感的に分かる日本語メッセージに変換します。
+  - Talks to the backend API (`/api/v1/links`, `/api/v1/links/resolve`).
+  - Turns machine-readable error codes from the server (`invalid_url`, `self_reference`, `not_short_url`, `not_found`, etc.) into English messages that make it clear to the user what to do next.
 
 ---
 
-## 開発コマンド
+## Development commands
 
-本ディレクトリ (`src/front/`) 内で以下のコマンドを実行します。
+Run these commands in this directory (`src/front/`).
 
 ```sh
-# 依存ライブラリのインストール
+# Install dependencies
 bun install
 
-# 開発サーバの起動 (http://localhost:5173)
+# Start the dev server (http://localhost:5173)
 bun run dev
 
-# TypeScript の型チェックのみ実行
+# Run TypeScript type checking only
 bun run typecheck
 
-# 型チェックとプロダクションビルド (成果物は dist/ へ出力)
+# Type check and production build (output goes to dist/)
 bun run build
 
-# 単体テストの実行 (url.test.ts)
+# Run unit tests (url.test.ts)
 bun run test
 
-# Prettier によるコード整形
+# Format code with Prettier
 bun run format
 
-# Prettier のフォーマットチェック
+# Check formatting with Prettier
 bun run format:check
 ```
 
 ---
 
-## 開発用プロキシとサーバ接続
+## Dev proxy and server connection
 
-### Vite によるリバースプロキシ (`vite.config.ts`)
+### Reverse proxy with Vite (`vite.config.ts`)
 
-ローカル開発環境では、ブラウザから `http://localhost:5173` の単一オリジンとして動作するように Vite のリバースプロキシを設定しています。
+In local development, Vite's reverse proxy is set up so the browser sees everything as a single origin, `http://localhost:5173`.
 
-- **`/api/*`**: バックエンドの JSON API (`API_ORIGIN`、既定は `http://localhost:9000`) に転送。
-- **`^/[A-Za-z0-9]{8}(\\?.*)?$`**: 短縮 URL へのアクセスをバックエンドの 302 リダイレクト処理に転送。
-- **同一オリジン**: プロキシによりブラウザ側で CORS 制約を意識することなく API 通信を行えます。
-- **`allowedHosts: ["front"]`**: E2E テスト環境で runn コンテナから `Host: front:5173` でアクセスされるため、Vite 側で許可ホストとして追加しています。
+- **`/api/*`**: Forwarded to the backend JSON API (`API_ORIGIN`, default `http://localhost:9000`).
+- **`^/[A-Za-z0-9]{8}(\\?.*)?$`**: Requests to short URLs are forwarded to the backend's 302 redirect handling.
+- **Same origin**: Thanks to the proxy, the browser can call the API without dealing with CORS.
+- **`allowedHosts: ["front"]`**: In the E2E test environment the runn container connects with `Host: front:5173`, so it is added as an allowed host in Vite.
 
-### 実行環境別の接続
+### Connection by environment
 
 1. **Docker Compose (`make up`)**:
-   - `compose.yaml` によりフロントエンドとバックエンドがまとめて起動します。
-   - `API_ORIGIN=http://server:9000` がコンテナに渡されます。
-   - ホスト側のソースコード変更が HMR により即座にブラウザに反映されます。
-2. **ホストマシン上で直接動かす場合**:
-   - コンテナを使わずに `bun run dev` を実行する場合は、**あらかじめ `src/server` ディレクトリで `sbt run` (ポート 9000) を立ち上げておいてください**。
-   - 向き先を変更したい場合は環境変数 `API_ORIGIN=http://host:port bun run dev` で指定します。
+   - `compose.yaml` starts the front end and backend together.
+   - `API_ORIGIN=http://server:9000` is passed to the container.
+   - Source changes on the host show up in the browser right away through HMR.
+2. **Running directly on the host machine**:
+   - If you run `bun run dev` without containers, **start `sbt run` (port 9000) in the `src/server` directory first**.
+   - To change the target, set the environment variable: `API_ORIGIN=http://host:port bun run dev`.
 
 ---
 
-## 仕様・実装方針
+## Spec and implementation policy
 
-### 1. 画面の挙動と UX
+### 1. Page behavior and UX
 
-- **ペースト即時送信**: 短縮フォーム・復元フォームともに、URL をペーストした瞬間に自動でリクエストを送信します (`onPaste` イベント)。Enter キー押下やボタンクリックでも送信可能です。
-- **ワンクリックコピー**: 発行された短縮 URL の横にコピーボタンを配置し、クリップボード API (`navigator.clipboard.writeText`) で手軽に共有できるようにしています。
-- **フォーム間の誘導**: すでに発行済みの短縮 URL を上の短縮フォームに入力した場合、サーバから `self_reference` エラーが返却され、「すでに短縮された URL です。元に戻すなら下の欄に貼り付けてください。」と適切なフォームへ利用者を誘導します。
+- **Send on paste**: Both the shorten form and the resolve form send a request as soon as a URL is pasted (`onPaste` event). Pressing Enter or clicking the button also sends.
+- **One-click copy**: A copy button next to the created short URL uses the Clipboard API (`navigator.clipboard.writeText`) for easy sharing.
+- **Guiding between forms**: If a short URL that was already created is entered in the shorten form at the top, the server returns a `self_reference` error, and the user is guided to the right form with "This URL is already shortened. To resolve it, paste it in the field below."
 
-### 2. 送信前バリデーション (`src/url.ts`)
+### 2. Validation before sending (`src/url.ts`)
 
-無駄なリクエストを抑え、素早くフィードバックするために送信前チェックを行います。
+Checks run before sending to avoid wasted requests and give fast feedback.
 
-- **判定内容**:
-  - 空文字 (`empty`)
-  - 2,048 文字超過 (`too_long`)
-  - スキーム欠落 / `http`, `https` 以外 (`unsupported_scheme` / `malformed`)
-  - URL パース不能 (`malformed`)
-  - ユーザー名・パスワードを含む URL (`credentials`)
-- **「サーバより厳しくはしない」ポリシー**:
-  クライアント側で厳しすぎるチェックを行うと、サーバ側で許容される正規の URL を誤って弾いてしまうリスクがあります。そのため、フロントエンドでは「明らかに不正な形式」のみを弾き、Punycode 変換やドメインの妥当性などの最終判定はバックエンドに委ねています。
+- **Checks**:
+  - Empty string (`empty`)
+  - Over 2,048 characters (`too_long`)
+  - Missing scheme / scheme other than `http`, `https` (`unsupported_scheme` / `malformed`)
+  - Not parseable as a URL (`malformed`)
+  - URL containing a user name or password (`credentials`)
+- **"Never stricter than the server" policy**:
+  Checks that are too strict on the client risk rejecting valid URLs that the server accepts. So the front end rejects only "clearly invalid formats" and leaves the final decision, such as Punycode conversion and domain validity, to the backend.
 
-### 3. エラーハンドリングと文言設計 (`src/api.ts`)
+### 3. Error handling and message design (`src/api.ts`)
 
-- バックエンド API はセキュリティ上の理由から、例外の詳細や入力値をレスポンスに含めず、機械可読なエラーコードのみを返します。
-- `api.ts` が責務を持ち、利用者が次に何をすべきか直感的に理解できる日本語メッセージに変換して画面に伝えます。
-  - `invalid_url` (`reason` 付き): URL の形式不備に応じた案内
-  - `self_reference`: 復元フォームへの案内
-  - `not_short_url`: 自サービス発行の短縮 URL でない旨の案内
-  - `not_found`: 該当する短縮 URL が見つからない旨の案内
-  - `code_generation_failed`: 時間をおいて再試行を促す案内
+- For security reasons, the backend API does not include exception details or input values in responses; it returns only machine-readable error codes.
+- `api.ts` is responsible for turning them into English messages that make it clear to the user what to do next, and shows them on the page.
+  - `invalid_url` (with `reason`): guidance based on what is wrong with the URL format
+  - `self_reference`: guidance to the resolve form
+  - `not_short_url`: says it is not a short URL created by this service
+  - `not_found`: says no matching short URL was found
+  - `code_generation_failed`: asks the user to try again later
 
 ---
 
-## プロダクションビルド
+## Production build
 
 ```sh
 bun run build
 ```
 
-実行すると、TypeScript の型チェック (`tsc --noEmit`) が行われた後、Vite により最適化された静的ファイル群が `dist/` ディレクトリに出力されます。
-本番環境では、この `dist/` の成果物を Cloudflare Worker の静的アセットとして配信します (`make deploy-front ENV=...`)。Worker のコードは `worker/`、設定は `wrangler.jsonc` です。構成は [docs/production-architecture.md](../../docs/production-architecture.md) を参照してください。
+This runs TypeScript type checking (`tsc --noEmit`), then Vite writes optimized static files to the `dist/` directory.
+In production, the `dist/` output is served as static assets of a Cloudflare Worker (`make deploy-front ENV=...`). The Worker code is in `worker/` and its config is `wrangler.jsonc`. See [docs/production-architecture.md](../../docs/production-architecture.md) for the architecture.

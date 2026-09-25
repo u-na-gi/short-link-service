@@ -1,12 +1,12 @@
-// Turnstile (staging / prod) の検証。短縮と復元だけにかけ、front が X-Turnstile-Token ヘッダで送るトークンを
-// siteverify で確かめてから Play に渡す。短縮 URL のリダイレクトやヘルスチェックにはかけない。
+// Turnstile verification (staging / prod). Applied only to shorten and resolve: the token the front end sends in the
+// X-Turnstile-Token header is checked with siteverify before passing to Play. Not applied to short URL redirects or health checks.
 
 export const TURNSTILE_HEADER = "x-turnstile-token";
 
 const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
-// front のウィジェットの action と揃える (src/front/src/turnstile.ts)。
-// action まで確かめるのは、短縮のフォームで取ったトークンを復元に使い回させないため
+// Keep in sync with the front end widget's action (src/front/src/turnstile.ts).
+// The action is checked so a token from the shorten form cannot be reused for resolve
 export type TurnstileAction = "shorten" | "resolve";
 
 export function turnstileActionOf(method: string, pathname: string): TurnstileAction | null {
@@ -21,8 +21,8 @@ type SiteverifyResponse = {
   hostname?: string;
 };
 
-// トークンが本物で、同じホストの同じ action のウィジェットで取ったものかを確かめる。
-// siteverify に繋がらないときも通さない (Turnstile を迂回させない)
+// Checks that the token is genuine and came from a widget with the same action on the same host.
+// Also rejects when siteverify is unreachable (so Turnstile cannot be bypassed)
 export async function verifyTurnstile(params: {
   secret: string;
   token: string;
@@ -46,7 +46,7 @@ export async function verifyTurnstile(params: {
   }
 }
 
-// トークンが無い・検証に通らないときに返す。API のエラーと同じ {"error"} の形にする
+// Returned when the token is missing or fails verification. Uses the same {"error"} shape as API errors
 export function turnstileFailed(): Response {
   return Response.json({ error: "turnstile_failed" }, { status: 403 });
 }

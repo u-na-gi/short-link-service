@@ -10,8 +10,10 @@ import scala.jdk.CollectionConverters._
 
 object LogCapture {
 
-  /** `run` の間に `loggerName` へ出たログを、conf/logback.xml の encoder (マスクの保険を含む) で JSON に直し、`run`
-    * の結果と一緒に返す。 アプリの起動時に logback が設定し直されるので、アプリが起動した後 (テスト本体の中) で呼ぶ。
+  /** Converts logs written to `loggerName` during `run` to JSON with the encoder from
+    * conf/logback.xml (including the masking safety net), and returns them with the result of
+    * `run`. Logback is reconfigured when the app starts, so call this after the app has started
+    * (inside the test body).
     */
   def capture[A](loggerName: String)(run: => A): (A, Seq[JsValue]) = {
     val logger = LoggerFactory.getLogger(loggerName).asInstanceOf[LogbackLogger]

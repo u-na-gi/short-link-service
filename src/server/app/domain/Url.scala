@@ -4,22 +4,23 @@ import okhttp3.HttpUrl
 
 import java.util.Locale
 
-/** 検証済みの URL を表す値オブジェクト。
+/** Value object for a validated URL.
   *
-  * コンストラクタは private なので、生成は必ず [[Url.from]] を経由する。 これにより「不正な値を持つ Url インスタンスは存在しない」ことを型で保証している。
+  * The constructor is private, so instances are always created through [[Url.from]]. This way the
+  * type guarantees that no Url instance holds an invalid value.
   */
 final case class Url private (value: String) {
 
-  /** 検証済みなのでパースは必ず成功し、ホストも正規化済み。 */
+  /** Already validated, so parsing always succeeds and the host is already normalized. */
   val host: String = HttpUrl.get(value).host
 
-  /** パーセントエンコードされたままのパス。クエリとフラグメントは含まない。 */
+  /** The path, still percent-encoded. Does not include the query or fragment. */
   val path: String = HttpUrl.get(value).encodedPath
 }
 
 object Url {
 
-  /** 利用者向けの文言はフロントが持つので、ここでは種類だけを返す。 */
+  /** The front end holds user-facing messages, so only the kind is returned here. */
   enum Error {
     case Empty
     case Malformed(raw: String)
@@ -28,13 +29,15 @@ object Url {
     case TooLong(length: Int)
   }
 
-  /** javascript: や data: を弾くため、許可するスキームはホワイトリストで持つ。 */
+  /** Allowed schemes are an allow list, to reject javascript: and data:. */
   private val AllowedSchemes = Set("http", "https")
 
-  /** 主要ブラウザの実用上限に合わせた値。 */
+  /** Matches the practical limit of major browsers. */
   private val MaxLength = 2048
 
-  /** HttpUrl は http/https 以外を null で返すだけなので、エラーを出し分けるためにスキームは先に取り出す。 */
+  /** HttpUrl just returns null for anything other than http/https, so extract the scheme first to
+    * tell errors apart.
+    */
   private val Scheme = """^([A-Za-z][A-Za-z0-9+.-]*):.*""".r
 
   def from(raw: String): Either[Error, Url] = {
@@ -48,16 +51,16 @@ object Url {
           case _         => Left(Error.Malformed(trimmed))
         }
         _ <- Either.cond(AllowedSchemes(scheme), (), Error.UnsupportedScheme(scheme))
-        // ホストが無い・ポートが不正などは null になる。
+        // Null when the host is missing, the port is invalid, etc.
         url <- Option(HttpUrl.parse(trimmed)).toRight(Error.Malformed(trimmed))
-        // user:pass@host は行き先を誤認させるフィッシングの常套手段なので拒否する。
+        // user:pass@host is a common phishing trick to disguise the destination, so reject it.
         _ <- Either.cond(
           url.username.isEmpty && url.password.isEmpty,
           (),
           Error.ContainsCredentials
         )
         normalized = url.toString
-        // punycode 化やパーセントエンコードで伸びることがあるので、正規化後にも確認する。
+        // Punycode and percent-encoding can make it longer, so check again after normalization.
         _ <- Either.cond(normalized.length <= MaxLength, (), Error.TooLong(normalized.length))
       } yield Url(normalized)
   }

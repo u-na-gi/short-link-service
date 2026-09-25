@@ -1,11 +1,11 @@
-// Worker が受けたリクエストを、Play (Tunnel の先) と静的アセットのどちらに渡すか決める。
-// 振り分けは開発用の vite.config.ts の proxy と同じ: /api/* と短縮 URL (/{英数 8 文字}) が Play。
+// Decides whether a request the Worker receives goes to Play (behind the Tunnel) or to static assets.
+// Routing matches the proxy in the dev vite.config.ts: /api/* and short URLs (/{8 alphanumeric chars}) go to Play.
 
 const SHORT_CODE_PATH = /^\/[A-Za-z0-9]{8}$/;
 
-// Play に渡すパスと、その回数制限の区分。null は静的アセット。
-// 公開の書き込み (短縮・復元) は厳しく、短縮 URL のリダイレクトは緩くする。
-// 回数は wrangler.jsonc の ratelimits (API_LIMITER / REDIRECT_LIMITER)
+// Paths passed to Play and their rate limit class. null means static assets.
+// Public writes (shorten, resolve) are limited strictly; short URL redirects more loosely.
+// The limits are the ratelimits in wrangler.jsonc (API_LIMITER / REDIRECT_LIMITER)
 export type LimitTarget = "api" | "redirect";
 
 export function limitTargetOf(pathname: string): LimitTarget | null {
@@ -14,20 +14,20 @@ export function limitTargetOf(pathname: string): LimitTarget | null {
   return null;
 }
 
-// 回数制限のキー。Cloudflare が付ける接続元 IP を使う (利用者が送る X-Forwarded-For は信用しない)
+// Rate limit key. Uses the client IP added by Cloudflare (X-Forwarded-For sent by users is not trusted)
 export function clientKey(request: Request): string {
   return request.headers.get("cf-connecting-ip") ?? "unknown";
 }
 
-// Tunnel 越しの Play の宛先。cloudflared はタスクのサイドカーで、Play とネットワーク名前空間を共有する。
-// Host は localhost になり、Play の既定の Host 許可リストに入っている
+// Play's address through the Tunnel. cloudflared is a sidecar in the task and shares the network namespace with Play.
+// The Host becomes localhost, which is in Play's default allowed hosts list
 export const SERVER_ORIGIN = "http://localhost:9000";
 
-// 利用者から来ても Play に渡さないヘッダ。
-// - cookie / cf-access-jwt-assertion: Play はセッションを持たず、Cloudflare Access の認証情報を渡す理由がない
-// - x-forwarded-for: Play は 127.0.0.1 (cloudflared) をプロキシとして信頼するので、利用者が送った値を
-//   そのまま渡すと remoteAddress を偽装できてしまう
-// - x-turnstile-token: Worker で検証し終えたもの。Play には関係ない
+// Headers from users that are not passed to Play.
+// - cookie / cf-access-jwt-assertion: Play has no sessions, and there is no reason to pass Cloudflare Access credentials
+// - x-forwarded-for: Play trusts 127.0.0.1 (cloudflared) as a proxy, so passing the user's value
+//   as is would let them spoof remoteAddress
+// - x-turnstile-token: already verified by the Worker. Not relevant to Play
 const DROPPED_HEADERS = [
   "cookie",
   "cf-access-jwt-assertion",
@@ -36,9 +36,9 @@ const DROPPED_HEADERS = [
   "host",
 ];
 
-// Play に渡すリクエストを作る。
-// - 元のホストとスキームは X-Forwarded-* で渡す (アクセスログの host は X-Forwarded-Host を優先する)
-// - リダイレクトは追わない。短縮 URL の 302 をそのまま利用者に返すため
+// Builds the request passed to Play.
+// - The original host and scheme are passed in X-Forwarded-* (the access log host prefers X-Forwarded-Host)
+// - Redirects are not followed, so the short URL's 302 goes back to the user as is
 export function toServerRequest(request: Request): Request {
   const url = new URL(request.url);
   const headers = new Headers(request.headers);
@@ -54,13 +54,13 @@ export function toServerRequest(request: Request): Request {
   });
 }
 
-// Tunnel の先に繋がらないとき (タスクの再起動中など) に返す。API のエラーと同じ {"error"} の形にして、
-// フロントが「サーバーでエラー」と案内できるようにする。Cloudflare の既定のエラーページ (1101) は返さない
+// Returned when the Tunnel target is unreachable (e.g. while the task restarts). Uses the same {"error"} shape as API errors
+// so the front end can show "a server error occurred". Cloudflare's default error page (1101) is not returned
 export function serverUnavailable(): Response {
   return Response.json({ error: "server_unavailable" }, { status: 502 });
 }
 
-// 回数制限を超えたときに返す。API のエラーと同じ {"error"} の形にする
+// Returned when the rate limit is exceeded. Uses the same {"error"} shape as API errors
 export function rateLimited(): Response {
   return Response.json(
     { error: "rate_limited" },

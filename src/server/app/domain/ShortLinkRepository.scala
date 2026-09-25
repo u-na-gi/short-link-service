@@ -2,26 +2,28 @@ package domain
 
 import scala.concurrent.Future
 
-/** [[ShortLinkRepository.saveIfAbsent]] の結果。 */
+/** Result of [[ShortLinkRepository.saveIfAbsent]]. */
 enum SaveResult {
   case Saved
 
-  /** 同じコードが既に使われている。呼び出し側で採番し直す。 */
+  /** The same code is already used. The caller generates a new code. */
   case CodeTaken
 
-  /** 同じ URL が既に登録されている。並行リクエストに先を越されたときに起きる。 */
+  /** The same URL is already registered. Happens when a concurrent request got there first. */
   case UrlExists(existing: ShortLink)
 
-  /** 保存できる件数の上限に達している。 */
+  /** The limit on the number of stored links has been reached. */
   case Full
 }
 
-/** 短縮リンクの永続化。 */
+/** Storage for short links. */
 trait ShortLinkRepository {
 
-  /** コードも URL も未登録で、件数に空きがあるときだけ保存する。判定と保存は不可分に行う。
+  /** Saves only when neither the code nor the URL is registered and there is room. The check and
+    * the save are atomic.
     *
-    * URL が登録済みなら、上限に達していても既存のリンクを返す (新しく保存しないので件数は増えない)。
+    * If the URL is registered, returns the existing link even at the limit (nothing new is saved,
+    * so the count does not grow).
     */
   def saveIfAbsent(link: ShortLink): Future[SaveResult]
   def findByCode(code: String): Future[Option[ShortLink]]

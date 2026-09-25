@@ -1,12 +1,12 @@
-# Cloudflare Access (develop / staging)。Worker のホスト名の前でログインさせ、許可したメールアドレスだけ通す。
-# ログインはメールに届くワンタイムコード (Zero Trust の既定のログイン方法)。
-# prod は公開サービスなので access_allowed_email = null にしてかけない。
+# Cloudflare Access (develop / staging). Requires login in front of the Worker hostname and lets only allowed email addresses through.
+# Login uses a one-time code sent by email (the Zero Trust default login method).
+# prod is a public service, so access_allowed_email = null and Access is not applied.
 #
-# E2E (runn) などの機械はサービストークンで通す。CF-Access-Client-Id / CF-Access-Client-Secret ヘッダを付ける。
-# トークンは output で返し、modules/aws が SSM に入れる。
+# Machines such as E2E (runn) pass with a service token, sending CF-Access-Client-Id / CF-Access-Client-Secret headers.
+# The token is returned as an output and modules/aws stores it in SSM.
 
 locals {
-  # メールアドレス自体は sensitive なので、null かどうかだけを取り出す (output や count に使う)
+  # The email address itself is sensitive, so extract only whether it is null (used for outputs and count)
   access_enabled = nonsensitive(var.access_allowed_email != null)
 }
 
@@ -27,11 +27,11 @@ resource "cloudflare_zero_trust_access_service_token" "e2e" {
 
   account_id = var.account_id
   name       = "${local.name}-e2e"
-  # 既定の 1 年。切れたら client_secret_version を上げて作り直す
+  # Default of 1 year. When it expires, bump client_secret_version to recreate it
   duration = "8760h"
 }
 
-# サービストークンは人ではないので non_identity (ログイン画面を出さずにヘッダだけで通す)
+# A service token is not a person, so use non_identity (passes with headers only, no login screen)
 resource "cloudflare_zero_trust_access_policy" "e2e" {
   count = local.access_enabled ? 1 : 0
 

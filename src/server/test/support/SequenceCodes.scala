@@ -1,6 +1,8 @@
 package support
 
-/** 渡したコードを順に返し、呼ばれた回数を数える採番スタブ。使い切ったら最後のコードを返し続ける。 */
+/** Code generator stub that returns the given codes in order and counts calls. When they run out,
+  * it keeps returning the last one.
+  */
 final class SequenceCodes(codes: String*) extends (() => String) {
   var calls = 0
 

@@ -11,12 +11,15 @@ import play.api.mvc._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 
-/** 1 リクエストにつき 1 行のアクセスログを出す。Play には標準のアクセスログが無いので自前で持つ。
+/** Writes one access log line per request. Play has no built-in access log, so we have our own.
   *
-  * body とクエリは `LogMasking` でキーだけ残して値を隠す。レスポンスの `error` (固定のエラーコード) と `code` (どうせパスに出る短縮コード)
-  * だけは、何が起きたか追えるよう値を出す。URL の項目 (`UrlKeys`) は、クエリの値だけ隠して部品に分けて出す。
+  * `LogMasking` keeps only the keys of the body and query and hides the values. Only the response's
+  * `error` (a fixed error code) and `code` (the short code, which is in the path anyway) show their
+  * values, so we can trace what happened. URL fields (`UrlKeys`) are split into parts with only the
+  * query values hidden.
   *
-  * 例外で終わったリクエストも 1 行出して、例外はそのまま上へ投げ直す (スタックトレースは ErrorHandler が出す)。
+  * A request that ends in an exception also gets a line, and the exception is rethrown as-is
+  * (ErrorHandler logs the stack trace).
   */
 @Singleton
 class AccessLogFilter @Inject() ()(using ExecutionContext) extends EssentialFilter {
@@ -52,8 +55,8 @@ class AccessLogFilter @Inject() ()(using ExecutionContext) extends EssentialFilt
     val fields = new java.util.LinkedHashMap[String, AnyRef]()
     RequestId.of(request).foreach(fields.put("requestId", _))
     fields.put("method", request.method)
-    // 本番は Cloudflare Worker、compose では Vite のプロキシが Host を書き換えるので、元の Host は X-Forwarded-Host にある。
-    // 送り手が自由に付けられるヘッダなので、記録にだけ使う。
+    // The Cloudflare Worker in production and the Vite proxy in compose rewrite Host, so the original Host is in X-Forwarded-Host.
+    // The sender can set this header freely, so use it only for logging.
     fields.put("host", request.headers.get("X-Forwarded-Host").getOrElse(request.host))
     fields.put("path", request.path)
     if (request.queryString.nonEmpty) {
@@ -73,7 +76,7 @@ class AccessLogFilter @Inject() ()(using ExecutionContext) extends EssentialFilt
 
     val marker = Markers.appendEntries(fields)
     val message = s"${request.method} ${request.path} $status ${elapsedMs}ms"
-    // ヘルスチェックは定期的に来てログが埋まるので、普段は出さない
+    // Health checks come regularly and would flood the log, so they are hidden normally
     if (AccessLogFilter.HealthCheckPaths(request.path)) logger.debug(marker, message)
     else logger.info(marker, message)
   }
@@ -93,7 +96,7 @@ class AccessLogFilter @Inject() ()(using ExecutionContext) extends EssentialFilt
       case _ => None
     }
 
-  /** 流れてくる request body を横から覗いて、ログ用に先頭だけ取っておく。 */
+  /** Taps the streaming request body and keeps only the beginning for the log. */
   private final class BodyCapture {
     @volatile private var bytes = ByteString.empty
     @volatile private var total = 0L
@@ -121,9 +124,11 @@ object AccessLogFilter {
   val HealthCheckPaths: Set[String] = Set("/", "/api/v1/health")
   val RevealedResponseKeys: Set[String] = Set("error", "code")
 
-  /** 作成の body の `url`、復元のクエリの `shortUrl`、レスポンスの `shortUrl` / `originalUrl` */
+  /** `url` in the create body, `shortUrl` in the resolve query, `shortUrl` / `originalUrl` in
+    * responses
+    */
   val UrlKeys: Set[String] = Set("url", "shortUrl", "originalUrl")
 
-  /** URL は 2048 文字までなので、正常な body はこれに収まる */
+  /** URLs are at most 2048 characters, so a valid body fits in this */
   val MaxCapturedBytes = 8 * 1024
 }

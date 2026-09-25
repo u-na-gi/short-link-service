@@ -1,4 +1,4 @@
-# ecspresso は tfstate プラグインでここの output を読む ({{ tfstate "output.xxx" }})
+# ecspresso reads these outputs via the tfstate plugin ({{ tfstate "output.xxx" }})
 
 output "vpc_id" {
   value = module.aws.vpc_id
@@ -41,12 +41,12 @@ output "vpc_service_id" {
 }
 
 output "public_base_url" {
-  description = "サイトの公開 URL (Worker の routes、make e2e-remote の向き先)"
+  description = "Public URL of the site (Worker routes, target of make e2e-remote)"
   value       = local.public_base_url
 }
 
 output "shortener_base_url" {
-  description = "Play の SHORTENER_BASE_URL (短縮 URL のベース)"
+  description = "Play's SHORTENER_BASE_URL (short URL base)"
   value       = local.public_base_url
 }
 

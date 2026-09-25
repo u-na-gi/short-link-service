@@ -1,84 +1,84 @@
-# 開発環境ガイド (`docs/development.md`)
+# Development Environment Guide (`docs/development.md`)
 
-本プロジェクトの開発環境のセットアップ、起動・停止手順、ログの確認方法、および開発時の注意点について説明します。
+This document describes the setup, startup/shutdown procedures, log inspection methods, and development precautions for this project's development environment.
 
-## 目次
+## Table of Contents
 
-- [前提条件](#前提条件)
-- [Docker Compose による開発 (推奨)](#docker-compose-による開発-推奨)
-  - [クイックスタート](#クイックスタート)
-  - [Makefile コマンドリファレンス](#makefile-コマンドリファレンス)
-  - [コンテナ構成と動作の仕組み](#コンテナ構成と動作の仕組み)
-- [ローカル直接起動 (Docker を使わない場合)](#ローカル直接起動-docker-を使わない場合)
-  - [1. バックエンドの起動](#1-バックエンドの起動)
-  - [2. フロントエンドの起動](#2-フロントエンドの起動)
-  - [直接起動時の挙動](#直接起動時の挙動)
-- [設定と環境変数](#設定と環境変数)
-- [VS Code Devcontainer での開発](#vs-code-devcontainer-での開発)
+- [Prerequisites](#prerequisites)
+- [Development with Docker Compose (Recommended)](#development-with-docker-compose-recommended)
+  - [Quickstart](#quickstart)
+  - [Makefile Command Reference](#makefile-command-reference)
+  - [Container Architecture and How It Works](#container-architecture-and-how-it-works)
+- [Running Directly on the Host (Without Docker)](#running-directly-on-the-host-without-docker)
+  - [1. Starting the Backend](#1-starting-the-backend)
+  - [2. Starting the Frontend](#2-starting-the-frontend)
+  - [Behavior When Running Directly](#behavior-when-running-directly)
+- [Configuration and Environment Variables](#configuration-and-environment-variables)
+- [Development with VS Code Dev Containers](#development-with-vs-code-dev-containers)
 
 ---
 
-## 前提条件
+## Prerequisites
 
-- [Docker](https://www.docker.com/) および Docker Compose
+- [Docker](https://www.docker.com/) and Docker Compose
 - `make`
-- (コンテナ外で直接動かす場合のみ)
+- (Only when running directly outside containers)
   - JDK 21
   - sbt 1.13.0
   - [Bun](https://bun.sh/) 1.4+
 
 ---
 
-## Docker Compose による開発 (推奨)
+## Development with Docker Compose (Recommended)
 
-本リポジトリでは `compose.yaml` と `Makefile` を用いて、フロントエンドとバックエンドをワンコマンドで立ち上げられる環境を用意しています。
+This repository provides an environment where the frontend and backend can be started with a single command using `compose.yaml` and `Makefile`.
 
-### クイックスタート
+### Quickstart
 
-リポジトリルートで以下の手順を実行します。
+Run the following steps at the repository root.
 
 ```sh
-# 1. 環境変数ファイルの準備 (初回のみ)
+# 1. Prepare environment variable file (first time only)
 cp .env.example .env
 
-# 2. 開発環境のビルドと起動
+# 2. Build and start development environment
 make up
 
-# 3. ログの確認
-make logs          # 全サービスのログを表示
-make logs-server   # server の JSON ログを jq で整形してストリーミング表示
+# 3. View logs
+make logs          # View logs for all services
+make logs-server   # Format and stream server JSON logs with jq
 
-# 4. 開発環境の停止
+# 4. Stop development environment
 make down
 ```
 
-起動後のアクセス先:
+Access endpoints after startup:
 
-- **フロントエンド画面**: [http://localhost:5173](http://localhost:5173)
-- **バックエンド API (Play)**: [http://localhost:9000](http://localhost:9000)
+- **Frontend UI**: [http://localhost:5173](http://localhost:5173)
+- **Backend API (Play)**: [http://localhost:9000](http://localhost:9000)
 
-### Makefile コマンドリファレンス
+### Makefile Command Reference
 
-| コマンド           | 実行内容                                                                  | 説明                                                                                                                                           |
-| ------------------ | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `make up`          | `docker compose up -d --build --renew-anon-volumes`                       | コンテナをビルドしてバックグラウンド起動。`package.json` 変更時に古い `node_modules` が残らないよう匿名ボリュームを再生成します。              |
-| `make down`        | `docker compose down`                                                     | 起動中のコンテナを停止・削除します。                                                                                                           |
-| `make logs`        | `docker compose logs -f`                                                  | 全サービスのログをリアルタイムでストリーミング表示します。                                                                                     |
-| `make logs-server` | `docker compose logs -f --no-log-prefix server \| jq -R 'fromjson? // .'` | server の標準出力ログ (JSON) を `jq` で整形して読みやすく表示します。                                                                          |
-| `make e2e`         | (後述)                                                                    | E2E テスト専用の Compose を立ち上げ、テスト完了後に自動クリーンアップします。詳細は [tests/README.md](../tests/README.md) を参照してください。 |
+| Command | Execution | Description |
+| --- | --- | --- |
+| `make up` | `docker compose up -d --build --renew-anon-volumes` | Builds and starts containers in the background. Recreates anonymous volumes so stale `node_modules` are not left behind when `package.json` changes. |
+| `make down` | `docker compose down` | Stops and removes running containers. |
+| `make logs` | `docker compose logs -f` | Streams logs for all services in real time. |
+| `make logs-server` | `docker compose logs -f --no-log-prefix server \| jq -R 'fromjson? // .'` | Formats and displays server stdout logs (JSON) using `jq` for readability. |
+| `make e2e` | (Described below) | Launches E2E-dedicated Compose and automatically cleans up after tests finish. See [tests/README.md](../tests/README.md) for details. |
 
-### コンテナ構成と動作の仕組み
+### Container Architecture and How It Works
 
 ```mermaid
 flowchart LR
-    subgraph Host ["ホスト環境"]
-        SourceServer["src/server/ (ソースコード)"]
-        SourceFront["src/front/ (ソースコード)"]
+    subgraph Host ["Host Environment"]
+        SourceServer["src/server/ (Source Code)"]
+        SourceFront["src/front/ (Source Code)"]
     end
 
     subgraph Compose ["Docker Compose (short-link-service)"]
-        ServerContainer["server コンテナ\n(sbt run :9000)"]
-        FrontContainer["front コンテナ\n(bun run dev :5173)"]
+        ServerContainer["server container\n(sbt run :9000)"]
+        FrontContainer["front container\n(bun run dev :5173)"]
     end
 
     SourceServer -->|Bind Mount| ServerContainer
@@ -86,35 +86,35 @@ flowchart LR
     FrontContainer -->|API Proxy\nhttp://server:9000| ServerContainer
 ```
 
-1. **ホットリロード (HMR)**:
-   - ホスト側のソースコード (`src/server`, `src/front`) がコンテナにバインドマウントされています。
-   - コンテナ内に入って作業する必要はなく、ホスト側のエディタでコードを保存すると、`sbt run` および Vite のホットリロードにより即座に変更が反映されます。
-2. **初回起動時の注意**:
-   - Play Framework の dev モードは、最初のリクエストを受け取ったタイミングでソースコードのコンパイルを行います。そのため、初回起動直後のアクセスは応答までに数分かかる場合があります。
-3. **ビルド成果物とキャッシュの分離**:
-   - `target/` および `project/target/` は名前付きボリューム (`server-target`) に分離されており、Devcontainer やホスト側の Metals/sbt とファイルを取り合わないよう保護されています。
-   - sbt および coursier のキャッシュもボリューム化されているため、コンテナ再起動のたびに依存ライブラリをダウンロードし直すことはありません。
-4. **標準入力の維持 (`stdin_open: true`, `tty: true`)**:
-   - `sbt run` は標準入力が閉じると Enter が押されたとみなして停止してしまうため、Compose 定義で tty と stdin を開いた状態に維持しています。
+1. **Hot reload (HMR)**:
+   - Host-side source code (`src/server`, `src/front`) is bind-mounted into containers.
+   - There is no need to enter containers to work; saving code in your host editor immediately reflects changes via `sbt run` and Vite hot reload.
+2. **Notes on initial startup**:
+   - Play Framework dev mode compiles source code when it receives the first request. Therefore, access immediately after initial startup may take a few minutes before responding.
+3. **Separation of build artifacts and cache**:
+   - `target/` and `project/target/` are isolated in a named volume (`server-target`) to prevent conflicts with Devcontainer or host-side Metals/sbt.
+   - Caches for sbt and coursier are also volume-mounted, avoiding re-downloading dependency libraries on every container restart.
+4. **Retaining standard input (`stdin_open: true`, `tty: true`)**:
+   - Because `sbt run` stops when stdin is closed (treating it as pressing Enter), tty and stdin are kept open in the Compose definition.
 
 ---
 
-## ローカル直接起動 (Docker を使わない場合)
+## Running Directly on the Host (Without Docker)
 
-Docker を使わずに、ホストマシン上のターミナルで直接各プロセスを起動することも可能です。
+It is also possible to run each process directly in terminals on the host machine without Docker.
 
-### 1. バックエンドの起動
+### 1. Starting the Backend
 
 ```sh
 cd src/server
 sbt run
 ```
 
-ポート `9000` で Play Framework が立ち上がります。
+Play Framework starts on port `9000`.
 
-### 2. フロントエンドの起動
+### 2. Starting the Frontend
 
-別ターミナルを開き、以下を実行します。
+Open another terminal and run:
 
 ```sh
 cd src/front
@@ -122,35 +122,35 @@ bun install
 bun run dev
 ```
 
-ポート `5173` で Vite 開発サーバが立ち上がります。
+Vite dev server starts on port `5173`.
 
-### 直接起動時の挙動
+### Behavior When Running Directly
 
-- Vite のプロキシは、既定で `http://localhost:9000` に向きます（プロキシ先を変える場合は `API_ORIGIN=http://host:port bun run dev`）。
-- **短縮 URL のクリック確認**: バックエンドの `shortener.base-url` の既定値が `http://localhost:5173` であるため、直接起動時は発行された短縮 URL (`http://localhost:5173/xxxxxxxx`) をブラウザでそのままクリックしてリダイレクトの動作を確認できます。
-- Docker Compose 起動時は `.env` で `SHORTENER_BASE_URL=https://example.com/` が渡されるため、発行される短縮 URL はローカルでは直接開けません（要件仕様どおり）。
-
----
-
-## 設定と環境変数
-
-Compose 起動時、ルートディレクトリの `.env` から環境変数が server コンテナに渡されます。
-
-| 環境変数名                | 既定値 (`conf/application.conf`) | .env.example での値                                          | 説明                                                                                                                                                                    |
-| ------------------------- | -------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SHORTENER_BASE_URL`      | `http://localhost:5173`          | `https://example.com/`                                       | 短縮 URL のベース URL。本番や検証用の公開ドメインを指定します。                                                                                                         |
-| `PLAY_EXTRA_ALLOWED_HOST` | (未設定)                         | `server` (compose.yaml 内)                                   | Play の `play.filters.hosts.allowed` に追加するホスト名。Vite プロキシが Host ヘッダを `server:9000` に書き換えてリクエストを転送するため、Compose では必須となります。 |
-| `SBT_OPTS`                | (未設定)                         | `-Dsbt.supershell=false -Dsbt.color=false` (compose.yaml 内) | sbt の進捗バーやカラーエスケープ文字が JSON ログに混入して `jq` のパースが失敗するのを防ぎます。                                                                        |
+- The Vite proxy points to `http://localhost:9000` by default (to change the proxy target, run `API_ORIGIN=http://host:port bun run dev`).
+- **Testing short URLs by clicking**: Since the default value of `shortener.base-url` in the backend is `http://localhost:5173`, when running directly you can test redirection by clicking the issued short URL (`http://localhost:5173/xxxxxxxx`) directly in a browser.
+- When running under Docker Compose, `SHORTENER_BASE_URL=https://example.com/` is passed via `.env`, so issued short URLs cannot be opened directly locally (as per specification requirements).
 
 ---
 
-## VS Code Devcontainer での開発
+## Configuration and Environment Variables
 
-本リポジトリには `.devcontainer/` が用意されています。VS Code で開いて「Reopen in Container」を選択することで、必要なツールチェーンが揃った開発環境を利用できます。
+When starting Compose, environment variables are passed to the server container from `.env` in the root directory.
 
-- **含まれている環境**: Debian trixie、JDK 21、sbt 1.13.0、Bun、Node LTS、runn 1.11.0、gh、jq、make、Metals MCP。
+| Environment Variable | Default (`conf/application.conf`) | Value in .env.example | Description |
+| --- | --- | --- | --- |
+| `SHORTENER_BASE_URL` | `http://localhost:5173` | `https://example.com/` | Base URL for short URLs. Specifies the public domain for production or verification. |
+| `PLAY_EXTRA_ALLOWED_HOST` | (Unset) | `server` (in compose.yaml) | Hostname to add to Play's `play.filters.hosts.allowed`. Required in Compose because the Vite proxy rewrites the Host header to `server:9000` when forwarding requests. |
+| `SBT_OPTS` | (Unset) | `-Dsbt.supershell=false -Dsbt.color=false` (in compose.yaml) | Prevents sbt progress bars and color escape codes from mixing into JSON logs and causing `jq` parsing failures. |
+
+---
+
+## Development with VS Code Dev Containers
+
+This repository provides `.devcontainer/`. Opening in VS Code and selecting "Reopen in Container" provides a development environment with all required toolchains.
+
+- **Included environment**: Debian trixie, JDK 21, sbt 1.13.0, Bun, Node LTS, runn 1.11.0, gh, jq, make, Metals MCP.
 - **Docker-outside-of-Docker**:
-  - Devcontainer 内からホストの Docker デーモンを直接利用します。
-  - Devcontainer 内部から `make up` や `make e2e` を実行した場合でも、ホスト側の絶対パス (`LOCAL_WORKSPACE_FOLDER`) を `devcontainer.json` の `remoteEnv` 経由で取得し、Compose のバインドマウント元に正しく渡す仕組みになっています。
-- **Metals の認識**:
-  - VS Code のマルチワークスペース設定 `short-link-service.code-workspace` を使用します。Metals がビルドルートを正しく検出できるように、ワークスペースの先頭に `src/server` を配置しています。
+  - Uses the host Docker daemon directly from within the Devcontainer.
+  - Even when running `make up` or `make e2e` from inside the Devcontainer, the host absolute path (`LOCAL_WORKSPACE_FOLDER`) is obtained via `remoteEnv` in `devcontainer.json` and correctly passed to Compose bind mount sources.
+- **Metals recognition**:
+  - Uses VS Code multi-root workspace file `short-link-service.code-workspace`. Placed `src/server` at the top of the workspace so Metals correctly detects the build root.

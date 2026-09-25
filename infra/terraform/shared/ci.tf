@@ -1,19 +1,19 @@
-# GitHub Actions から AWS に入るための OIDC とロール。
+# OIDC and roles for GitHub Actions to access AWS.
 #
-# - plan ロール (short-link-ci-plan): PR の terraform plan 用。読み取りだけ (state のロックファイルの読み書きは除く)。
-#   GitHub の Environment `plan` からだけ引き受けられる。
-# - deploy ロール (short-link-ci-deploy-<env>): 環境ごと。その環境の Environment からだけ引き受けられる。
-#   Environment 側でデプロイできるブランチ・タグを絞っている (infra/terraform/github)。
+# - plan role (short-link-ci-plan): for terraform plan on PRs. Read-only (except reading/writing the state lock file).
+#   Can only be assumed from the GitHub Environment `plan`.
+# - deploy roles (short-link-ci-deploy-<env>): one per environment. Can only be assumed from that environment's Environment.
+#   The Environment restricts which branches/tags can deploy (infra/terraform/github).
 #
-# 引き受け元は OIDC トークンの sub で絞る。このリポジトリは sub に名前ではなく ID を使う設定
-# (use_immutable_subject) なので、repo:<owner>@<owner_id>/<repo>@<repo_id>:environment:<name> の形になる。
-# 名前を変えても、同じ名前で別のリポジトリを作られても、ID は変わらない / 一致しない。
+# Who can assume is restricted by the sub of the OIDC token. This repository uses IDs instead of names in sub
+# (use_immutable_subject), so it has the form repo:<owner>@<owner_id>/<repo>@<repo_id>:environment:<name>.
+# Renaming does not change the ID, and a different repository created with the same name does not match it.
 #
-# 権限昇格を防ぐため:
-# - deploy ロールの名前は、deploy ロールが触れる環境のロール (short-link-<env>-*) のパターンに入れない
-# - 環境のロール (タスク実行ロール / タスクロール) には環境ごとの権限境界を付け、deploy ロールは境界付きでしか
-#   ロールを作れない・境界を変えられないようにする。ロールにどんなポリシーを付けても、境界より強くはならない
-# - 他の環境の state / SSM / ECS には Deny で触らせない
+# To prevent privilege escalation:
+# - deploy role names are kept out of the pattern of environment roles (short-link-<env>-*) that the deploy role can touch
+# - environment roles (task execution role / task role) get a per-environment permissions boundary, and the deploy role can only
+#   create roles with the boundary and cannot change it. Whatever policies are attached, a role never exceeds the boundary
+# - other environments' state / SSM / ECS are off limits via Deny
 
 locals {
   github_oidc_sub_prefix = "repo:u-na-gi@72393752/short-link-service@1385659227"
@@ -22,7 +22,7 @@ locals {
   account_id             = data.aws_caller_identity.current.account_id
   region                 = "ap-northeast-1"
 
-  # 各環境から見た「ほかの環境」
+  # "Other environments" as seen from each environment
   other_envs = { for env in local.envs : env => setsubtract(local.envs, [env]) }
 }
 
@@ -33,7 +33,7 @@ resource "aws_iam_openid_connect_provider" "github" {
   client_id_list = ["sts.amazonaws.com"]
 }
 
-# GitHub の Environment 名ごとに、そこから来た OIDC トークンだけを信頼する
+# For each GitHub Environment name, trust only OIDC tokens coming from it
 data "aws_iam_policy_document" "github_assume" {
   for_each = setunion(local.envs, ["plan"])
 
@@ -59,9 +59,9 @@ data "aws_iam_policy_document" "github_assume" {
   }
 }
 
-# --- 環境のロールの権限境界 ---------------------------------------------------
-# modules/aws のタスク実行ロール / タスクロールに付ける。ECS がその環境のイメージ・ログ・シークレットを扱うのに
-# 要るものだけ。タスクロール (アプリ) は何も使わないが、同じ境界で上限を決める
+# --- Permissions boundary for environment roles ----------------------------------
+# Attached to the task execution role / task role in modules/aws. Only what ECS needs to handle that environment's images, logs,
+# and secrets. The task role (the app) uses none of it, but the same boundary sets its upper limit
 
 resource "aws_iam_policy" "ecs_task_boundary" {
   for_each = local.envs
@@ -116,13 +116,13 @@ resource "aws_iam_role_policy" "ci_plan" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      # plan でも S3 backend はロックファイル (*.tflock) を書いて消す
+      # Even plan writes and deletes the lock file (*.tflock) with the S3 backend
       {
         Effect   = "Allow"
         Action   = ["s3:PutObject", "s3:DeleteObject"]
         Resource = "arn:aws:s3:::${local.tfstate_bucket}/*.tflock"
       },
-      # GitHub の設定 (CI 用の Cloudflare トークンが入っている) と bootstrap の state は PR から読ませない
+      # GitHub settings (which contain the Cloudflare tokens for CI) and the bootstrap state are not readable from PRs
       {
         Effect = "Deny"
         Action = "s3:GetObject"
@@ -145,7 +145,7 @@ resource "aws_iam_role" "ci_deploy" {
   max_session_duration = 7200
 }
 
-# IAM 以外 (VPC / ECS / ECR / SSM / CloudWatch Logs / S3 の state) は PowerUser を土台にし、下の Deny で絞る
+# For everything other than IAM (VPC / ECS / ECR / SSM / CloudWatch Logs / S3 state), start from PowerUser and narrow it with the Deny below
 resource "aws_iam_role_policy_attachment" "ci_deploy_power_user" {
   for_each = local.envs
 
@@ -162,7 +162,7 @@ resource "aws_iam_role_policy" "ci_deploy" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      # その環境のロール (short-link-<env>-*) を管理する。境界が付いている限り、何を付けても境界より強くならない
+      # Manage that environment's roles (short-link-<env>-*). As long as the boundary is attached, nothing attached can exceed it
       {
         Sid    = "ManageEnvRoles"
         Effect = "Allow"
@@ -175,7 +175,7 @@ resource "aws_iam_role_policy" "ci_deploy" {
         ]
         Resource = "arn:aws:iam::${local.account_id}:role/short-link-${each.key}-*"
       },
-      # ロールを作る・境界を付け替えるのは、その環境の境界を付けるときだけ
+      # Creating roles or changing their boundary is allowed only when attaching that environment's boundary
       {
         Sid      = "CreateEnvRolesWithBoundary"
         Effect   = "Allow"
@@ -185,7 +185,7 @@ resource "aws_iam_role_policy" "ci_deploy" {
           StringEquals = { "iam:PermissionsBoundary" = aws_iam_policy.ecs_task_boundary[each.key].arn }
         }
       },
-      # ecspresso がタスク定義にロールを渡す。渡せるのは ECS のタスクにだけ
+      # ecspresso passes roles to task definitions. They can only be passed to ECS tasks
       {
         Sid      = "PassEnvRolesToEcsTasks"
         Effect   = "Allow"
@@ -195,14 +195,14 @@ resource "aws_iam_role_policy" "ci_deploy" {
           StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" }
         }
       },
-      # state は自分の環境のものだけ書ける
+      # Only its own environment's state is writable
       {
         Sid         = "WriteOnlyOwnState"
         Effect      = "Deny"
         Action      = ["s3:PutObject", "s3:DeleteObject"]
         NotResource = "arn:aws:s3:::${local.tfstate_bucket}/envs/${each.key}/*"
       },
-      # ほかの環境・GitHub の設定・bootstrap の state は読めない (shared は ECR の URL を読むので読める)
+      # Other environments, GitHub settings, and bootstrap state are not readable (shared is readable because the ECR URL is read from it)
       {
         Sid    = "ReadNoOtherState"
         Effect = "Deny"
@@ -215,7 +215,7 @@ resource "aws_iam_role_policy" "ci_deploy" {
           ],
         )
       },
-      # ほかの環境のシークレットと ECS には触れない
+      # No access to other environments' secrets and ECS
       {
         Sid      = "NoOtherEnvSecrets"
         Effect   = "Deny"

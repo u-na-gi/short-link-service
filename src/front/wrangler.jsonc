@@ -1,23 +1,23 @@
-// Cloudflare Worker の設定。front の静的アセット (vite build の dist) を配り、
-// /api/* と短縮 URL を Workers VPC の VPC Service (Cloudflare Tunnel → ECS の Play) に流す。コードは worker/。
+// Cloudflare Worker config. Serves the front end's static assets (dist from vite build) and
+// sends /api/* and short URLs to the Workers VPC VPC Service (Cloudflare Tunnel → Play on ECS). The code is in worker/.
 //
-//   make deploy-front ENV=develop   (リポジトリルートで。ビルドと Turnstile のサイトキー / シークレットの受け渡しもする)
+//   make deploy-front ENV=develop   (from the repository root. It also builds and passes the Turnstile site key / secret)
 //
-// 認証情報は CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID (infra/.envrc.local)。
-// Worker の名前は short-link-<env>。公開するのは env ごとのカスタムドメイン (u-na-gi.com のサブドメイン) だけで、
-// workers.dev の URL は切る (Cloudflare Access をカスタムドメインにかけるので、別の入口を残さない)。
+// Credentials are CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID (infra/.envrc.local).
+// The Worker is named short-link-<env>. Only the per-env custom domain (a subdomain of u-na-gi.com) is public, and
+// the workers.dev URL is turned off (Cloudflare Access is applied to the custom domain, so no other entry point is left).
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "short-link",
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-01",
   "workers_dev": false,
-  // バージョンごとのプレビュー URL も Cloudflare Access の対象外になりうるので出さない
+  // Per-version preview URLs may also fall outside Cloudflare Access, so they are turned off
   "preview_urls": false,
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    // 静的アセットより先に Worker を通す。先にアセットを見ると、短縮 URL (/{英数 8 文字}) の振り分けが効かない
+    // Run the Worker before static assets. If assets are checked first, routing for short URLs (/{8 alphanumeric chars}) does not work
     "run_worker_first": true,
   },
   "observability": {
@@ -26,9 +26,9 @@
   "env": {
     "develop": {
       "routes": [{ "pattern": "s-dev.u-na-gi.com", "custom_domain": true }],
-      // Turnstile はかけない (staging / prod だけ)
-      // IP ごとの回数制限。period は 10 か 60 秒だけ。namespace_id はアカウント内で一意な任意の数字
-      // (データセンターごとのゆるい数え方なので、厳密な制限としては当てにしない)
+      // No Turnstile (staging / prod only)
+      // Per-IP rate limits. period must be 10 or 60 seconds. namespace_id is any number unique within the account
+      // (counting is loose and per data center, so do not rely on it as a strict limit)
       "ratelimits": [
         { "name": "API_LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
         {
@@ -37,7 +37,7 @@
           "simple": { "limit": 100, "period": 60 },
         },
       ],
-      // service_id は infra/terraform/envs/develop の output vpc_service_id
+      // service_id is output vpc_service_id of infra/terraform/envs/develop
       "vpc_services": [
         {
           "binding": "SERVER",
@@ -47,7 +47,7 @@
     },
     "staging": {
       "routes": [{ "pattern": "s-stg.u-na-gi.com", "custom_domain": true }],
-      // 短縮と復元に Turnstile をかける。シークレットは make deploy-front が --secrets-file で入れる
+      // Apply Turnstile to shorten and resolve. make deploy-front sets the secret with --secrets-file
       "vars": { "TURNSTILE": "on" },
       "ratelimits": [
         { "name": "API_LIMITER", "namespace_id": "2001", "simple": { "limit": 20, "period": 60 } },
@@ -57,14 +57,14 @@
           "simple": { "limit": 100, "period": 60 },
         },
       ],
-      // service_id は infra/terraform/envs/staging の output vpc_service_id
+      // service_id is output vpc_service_id of infra/terraform/envs/staging
       "vpc_services": [
         { "binding": "SERVER", "service_id": "01a0d3a1-865f-7c62-8489-8115a0711503" },
       ],
     },
     "prod": {
       "routes": [{ "pattern": "s.u-na-gi.com", "custom_domain": true }],
-      // 短縮と復元に Turnstile をかける。シークレットは make deploy-front が --secrets-file で入れる
+      // Apply Turnstile to shorten and resolve. make deploy-front sets the secret with --secrets-file
       "vars": { "TURNSTILE": "on" },
       "ratelimits": [
         { "name": "API_LIMITER", "namespace_id": "3001", "simple": { "limit": 20, "period": 60 } },
@@ -74,7 +74,7 @@
           "simple": { "limit": 100, "period": 60 },
         },
       ],
-      // service_id は infra/terraform/envs/prod の output vpc_service_id
+      // service_id is output vpc_service_id of infra/terraform/envs/prod
       "vpc_services": [
         { "binding": "SERVER", "service_id": "01a0d3a1-d3eb-77f1-83ca-23eb3c168a38" },
       ],

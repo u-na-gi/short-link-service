@@ -1,23 +1,23 @@
-desc: 短縮できない URL を 400 で弾く
+desc: Reject URLs that cannot be shortened with 400
 labels:
   - links
   - validation
-# Turnstile をかけた環境 (staging / prod) ではトークンを取れないので流さない。turnstile.yml が 403 を確かめる
+# Not run in environments behind Turnstile (staging / prod) since no token can be obtained. turnstile.yml checks the 403
 if: env.E2E_TURNSTILE != 'on'
 runners:
   req: ${E2E_BASE_URL:-http://localhost:9000}
 vars:
-  # Cloudflare Access (develop / staging) を通るサービストークン。make e2e-remote が SSM から渡す。
-  # ローカル (make e2e) では空で送り、Vite / Play は無視する。全ステップの headers で使う
+  # Service token that passes Cloudflare Access (develop / staging). make e2e-remote passes it from SSM.
+  # Locally (make e2e) it is sent empty and Vite / Play ignore it. Used in the headers of every step
   access: &access
     CF-Access-Client-Id: "${CF_ACCESS_CLIENT_ID:-}"
     CF-Access-Client-Secret: "${CF_ACCESS_CLIENT_SECRET:-}"
-  # 自サービス宛の判定はサーバ側の shortener.base-url のホストと突き合わせる。
-  # 向き先を変えるときは E2E_BASE_URL と一緒にこちらも揃える
+  # Whether a URL points to this service is checked against the host of the server's shortener.base-url.
+  # When changing the target, update this together with E2E_BASE_URL
   selfUrl: ${E2E_SELF_URL:-http://localhost:9000/abcd1234}
 steps:
   missingField:
-    desc: url フィールドが無ければ invalid_request
+    desc: invalid_request when the url field is missing
     req:
       /api/v1/links:
         post:
@@ -28,7 +28,7 @@ steps:
       current.res.status == 400
       && current.res.body.error == 'invalid_request'
   notAString:
-    desc: url が文字列でなければ invalid_request
+    desc: invalid_request when url is not a string
     req:
       /api/v1/links:
         post:
@@ -40,7 +40,7 @@ steps:
       current.res.status == 400
       && current.res.body.error == 'invalid_request'
   emptyString:
-    desc: 空文字は invalid_url
+    desc: Empty string is invalid_url
     req:
       /api/v1/links:
         post:
@@ -52,7 +52,7 @@ steps:
       current.res.status == 400
       && current.res.body.error == 'invalid_url'
   selfReference:
-    desc: 自サービス宛は self_reference
+    desc: URL pointing to this service is self_reference
     req:
       /api/v1/links:
         post:
@@ -64,7 +64,7 @@ steps:
       current.res.status == 400
       && current.res.body.error == 'self_reference'
   withCredentials:
-    desc: 認証情報つきは invalid_url
+    desc: URL with credentials is invalid_url
     req:
       /api/v1/links:
         post:
@@ -76,7 +76,7 @@ steps:
       current.res.status == 400
       && current.res.body.error == 'invalid_url'
   unsupportedScheme:
-    desc: http/https 以外は invalid_url
+    desc: Schemes other than http/https are invalid_url
     req:
       /api/v1/links:
         post:

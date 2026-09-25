@@ -3,12 +3,12 @@ import { describe, test } from "node:test";
 import { turnstileActionOf, turnstileFailed, verifyTurnstile } from "./turnstile.ts";
 
 describe("turnstileActionOf", () => {
-  test("短縮と復元だけに Turnstile をかける", () => {
+  test("applies Turnstile only to shorten and resolve", () => {
     assert.equal(turnstileActionOf("POST", "/api/v1/links"), "shorten");
     assert.equal(turnstileActionOf("GET", "/api/v1/links/resolve"), "resolve");
   });
 
-  test("ヘルスチェックや短縮 URL のリダイレクトにはかけない", () => {
+  test("does not apply to health checks or short URL redirects", () => {
     assert.equal(turnstileActionOf("GET", "/api/v1/health"), null);
     assert.equal(turnstileActionOf("GET", "/abcd1234"), null);
     assert.equal(turnstileActionOf("GET", "/api/v1/links"), null);
@@ -24,7 +24,7 @@ describe("verifyTurnstile", () => {
     hostname: "s.u-na-gi.com",
   };
 
-  // siteverify の応答を差し替え、送った内容を記録する
+  // Stubs the siteverify response and records what was sent
   function stub(body: unknown, status = 200) {
     const sent: FormData[] = [];
     const fetchFn = (async (_url: unknown, init?: RequestInit) => {
@@ -34,7 +34,7 @@ describe("verifyTurnstile", () => {
     return { fetchFn, sent };
   }
 
-  test("本物で、action とホストが合っていれば通す", async () => {
+  test("accepts a genuine token with matching action and host", async () => {
     const { fetchFn, sent } = stub({ success: true, action: "shorten", hostname: "s.u-na-gi.com" });
     assert.equal(await verifyTurnstile({ ...base, fetchFn }), true);
     assert.equal(sent[0]?.get("secret"), "secret");
@@ -42,22 +42,22 @@ describe("verifyTurnstile", () => {
     assert.equal(sent[0]?.get("remoteip"), "198.51.100.7");
   });
 
-  test("siteverify が success: false なら通さない", async () => {
+  test("rejects when siteverify returns success: false", async () => {
     const { fetchFn } = stub({ success: false });
     assert.equal(await verifyTurnstile({ ...base, fetchFn }), false);
   });
 
-  test("別の action (復元のフォーム) で取ったトークンは通さない", async () => {
+  test("rejects a token from another action (the resolve form)", async () => {
     const { fetchFn } = stub({ success: true, action: "resolve", hostname: "s.u-na-gi.com" });
     assert.equal(await verifyTurnstile({ ...base, fetchFn }), false);
   });
 
-  test("別のホストで取ったトークンは通さない", async () => {
+  test("rejects a token from another host", async () => {
     const { fetchFn } = stub({ success: true, action: "shorten", hostname: "s-stg.u-na-gi.com" });
     assert.equal(await verifyTurnstile({ ...base, fetchFn }), false);
   });
 
-  test("siteverify に繋がらない・エラーを返すときは通さない", async () => {
+  test("rejects when siteverify is unreachable or returns an error", async () => {
     const failing = (async () => {
       throw new Error("network");
     }) as unknown as typeof fetch;
@@ -67,7 +67,7 @@ describe("verifyTurnstile", () => {
 });
 
 describe("turnstileFailed", () => {
-  test("API のエラーと同じ形の 403 を返す", async () => {
+  test("returns a 403 in the same shape as API errors", async () => {
     const res = turnstileFailed();
     assert.equal(res.status, 403);
     assert.deepEqual(await res.json(), { error: "turnstile_failed" });

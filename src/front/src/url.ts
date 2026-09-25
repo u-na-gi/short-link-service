@@ -1,20 +1,20 @@
-/** 送信前に弾く URL の問題。サーバの `Url.Error` と対応させている。 */
+/** URL problems rejected before sending. Mirrors the server's `Url.Error`. */
 export type UrlProblem = "empty" | "too_long" | "malformed" | "unsupported_scheme" | "credentials";
 
-/** サーバ (`Url.MaxLength`) と同じ上限。 */
+/** Same limit as the server (`Url.MaxLength`). */
 const MaxLength = 2048;
 
 const AllowedSchemes = new Set(["http", "https"]);
 
-/** サーバと同じく、エラーを出し分けるためにスキームだけ先に取り出す。 */
+/** Like the server, extract the scheme first to tell errors apart. */
 const Scheme = /^([A-Za-z][A-Za-z0-9+.-]*):/;
 
 /**
- * 明らかに送っても通らない URL を送信前に見つける。問題がなければ null。
+ * Finds URLs that clearly would not pass, before sending. Returns null if there is no problem.
  *
- * 最終的な判定はサーバが行う。サーバが受け付ける URL をここで弾くと利用者が送る手段を失うので、
- * サーバより厳しくはしない。正規化後の長さや IDN の細かい扱いのように、
- * ブラウザの URL パーサとサーバ (okhttp) で結果がずれうるものはサーバに任せる。
+ * The server makes the final decision. Rejecting a URL here that the server accepts leaves the user no way to send it,
+ * so this is never stricter than the server. Things where the browser URL parser and the server (okhttp) may disagree,
+ * such as length after normalization or fine details of IDN handling, are left to the server.
  */
 export function findUrlProblem(raw: string): UrlProblem | null {
   const trimmed = raw.trim();
@@ -31,21 +31,21 @@ export function findUrlProblem(raw: string): UrlProblem | null {
   } catch {
     return "malformed";
   }
-  // user:pass@host は行き先を誤認させるフィッシングの常套手段なので、サーバでも拒否している。
+  // user:pass@host is a common phishing trick to disguise the destination, so the server rejects it too.
   if (url.username !== "" || url.password !== "") return "credentials";
   return null;
 }
 
-/** 空のときの文言はフォームごとに違うので、呼び出し側で持つ。 */
+/** The text for an empty value differs per form, so callers own it. */
 export function describeUrlProblem(problem: Exclude<UrlProblem, "empty">): string {
   switch (problem) {
     case "too_long":
-      return `URL が長すぎます。${MaxLength} 文字以内の URL を貼り付けてください。`;
+      return `The URL is too long. Paste a URL of up to ${MaxLength} characters.`;
     case "malformed":
-      return "URL として読み取れませんでした。http:// か https:// で始まる URL を貼り付けてください。";
+      return "Could not read this as a URL. Paste a URL that starts with http:// or https://.";
     case "unsupported_scheme":
-      return "http:// か https:// で始まる URL を貼り付けてください。";
+      return "Paste a URL that starts with http:// or https://.";
     case "credentials":
-      return "ユーザー名やパスワードを含む URL は使えません。";
+      return "URLs that contain a user name or password are not allowed.";
   }
 }

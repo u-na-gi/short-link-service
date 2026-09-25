@@ -6,35 +6,35 @@ export type ShortLink = {
   originalUrl: string;
 };
 
-/** 短縮と復元はどちらも同じ形のリンクを返すので、結果の型も共通にする。 */
+/** Shorten and resolve both return a link of the same shape, so they share the result type. */
 export type LinkResult = { ok: true; link: ShortLink } | { ok: false; message: string };
 
-/** サーバはエラーコードだけを返す (入力値や内部の事情は返さない)。利用者向けの文言はここで持つ。 */
+/** The server returns only error codes (never input values or internal details). User-facing text lives here. */
 type ErrorBody = { error?: string; reason?: string };
 
-const retryLater = "時間をおいて、もう一度お試しください。";
+const retryLater = "Please try again later.";
 
-/** エラーコードで出し分けないときの文言。短縮と復元で共通。 */
+/** Text used when not distinguishing by error code. Shared by shorten and resolve. */
 function describeCommon(status: number): string {
   if (status === 429)
-    return "短い時間に何度も送信されました。1 分ほど待ってから、もう一度お試しください。";
+    return "Too many requests in a short time. Wait about a minute and try again.";
   return status >= 500
-    ? `サーバーでエラーが起きました。${retryLater}`
-    : `うまくいきませんでした (${status})。${retryLater}`;
+    ? `A server error occurred. ${retryLater}`
+    : `Something went wrong (${status}). ${retryLater}`;
 }
 
-/** サーバのエラーコードを、利用者が次に何をすればいいか分かる文に直す。 */
+/** Turns a server error code into text that tells the user what to do next. */
 function describeShorten(status: number, body: ErrorBody | null): string {
   switch (body?.error) {
     case "invalid_url":
-      // 送信前にも同じ検証をしているが、ブラウザとサーバで判定がずれたときはサーバの理由で案内する。
+      // The same check runs before sending, but if the browser and server disagree, guide the user by the server's reason.
       return describeInvalidUrl(body.reason);
     case "self_reference":
-      return "すでに短縮された URL です。元に戻すなら下の欄に貼り付けてください。";
+      return "This URL is already shortened. To resolve it, paste it in the field below.";
     case "code_generation_failed":
-      return `短縮 URL を発行できませんでした。${retryLater}`;
+      return `Could not create a short URL. ${retryLater}`;
     case "storage_full":
-      return "発行できる件数の上限に達したため、新しい短縮 URL を発行できません。";
+      return "The limit on the number of short URLs has been reached, so no new short URLs can be created.";
     default:
       return describeCommon(status);
   }
@@ -48,7 +48,7 @@ function describeInvalidUrl(reason: string | undefined): string {
     case "credentials":
       return describeUrlProblem(reason);
     case "empty":
-      return "短縮する URL を貼り付けてください。";
+      return "Paste the URL to shorten.";
     default:
       return describeUrlProblem("unsupported_scheme");
   }
@@ -57,16 +57,16 @@ function describeInvalidUrl(reason: string | undefined): string {
 function describeResolve(status: number, body: ErrorBody | null): string {
   switch (body?.error) {
     case "not_short_url":
-      return "このサービスで発行した短縮 URL を貼り付けてください。";
+      return "Paste a short URL created by this service.";
     case "not_found":
-      return "この短縮 URL は見つかりませんでした。URL が正しいか確かめてください。";
+      return "This short URL was not found. Check that the URL is correct.";
     default:
       return describeCommon(status);
   }
 }
 
-/** 短縮と復元のどちらでも起きる。Turnstile をかける環境 (staging / prod) だけ。 */
-const turnstileFailedMessage = "人による操作か確認できませんでした。もう一度お試しください。";
+/** Can happen for both shorten and resolve. Only in environments with Turnstile (staging / prod). */
+const turnstileFailedMessage = "Could not verify that you are human. Please try again.";
 
 async function requestLink(
   input: RequestInfo,
@@ -77,10 +77,10 @@ async function requestLink(
   try {
     res = await fetch(input, init);
   } catch {
-    return { ok: false, message: `サーバーに接続できませんでした。${retryLater}` };
+    return { ok: false, message: `Could not connect to the server. ${retryLater}` };
   }
 
-  // 502 などプロキシが返す HTML でも落ちないよう、JSON でなければ null として扱う。
+  // Treat non-JSON as null so HTML from a proxy (such as a 502) does not break this.
   const body: unknown = await res.json().catch(() => null);
   if (res.ok) return { ok: true, link: body as ShortLink };
   if ((body as ErrorBody | null)?.error === "turnstile_failed") {
@@ -90,8 +90,8 @@ async function requestLink(
 }
 
 /**
- * Turnstile のトークン。null は Turnstile を使わない環境、"failed" はウィジェットで取れなかったとき。
- * 取れなかったときは送らずに案内する (送っても Worker に断られる)。
+ * Turnstile token. null means an environment without Turnstile; "failed" means the widget could not get one.
+ * When it could not be obtained, show a message without sending (the Worker would reject it anyway).
  */
 export type TurnstileToken = string | null | "failed";
 
@@ -112,7 +112,7 @@ export function shortenUrl(url: string, token: TurnstileToken = null): Promise<L
   );
 }
 
-/** 短縮 URL を丸ごと渡す。自サービスの URL か、どこがコードかの判定はサーバが行う。 */
+/** Passes the whole short URL. The server decides whether it belongs to this service and which part is the code. */
 export function resolveShortUrl(
   shortUrl: string,
   token: TurnstileToken = null,

@@ -1,7 +1,7 @@
-# 環境 (develop / staging / prod) をまたいで 1 つだけ持つもの。
+# Things that exist only once across environments (develop / staging / prod).
 #
-# - ECR: イメージは一度だけビルドして全環境で使い回す (prod は main で作ったイメージを
-#   付け直して使う) ので、リポジトリは環境ごとに分けない。
+# - ECR: images are built once and reused in every environment (prod re-tags the image built on main
+#   and uses it), so the repository is not split per environment.
 
 terraform {
   required_version = ">= 1.16"
@@ -37,7 +37,7 @@ provider "aws" {
 resource "aws_ecr_repository" "server" {
   name = "short-link-service/server"
 
-  # タグは git のコミットで付け、同じタグで別のイメージを上書きさせない
+  # Tags come from git commits; do not allow overwriting a tag with a different image
   image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {
@@ -50,11 +50,11 @@ resource "aws_ecr_lifecycle_policy" "server" {
 
   policy = jsonencode({
     rules = [
-      # prod で使ったイメージ (deploy.yml が release-<sha> を足す) は、下の「新しい 30 個」に数えずに残す。
-      # ルールは優先度の順に当てはめられ、当てはまったイメージは後のルールで数えられない
+      # Images used in prod (deploy.yml adds release-<sha>) are kept without counting toward the "newest 30" below.
+      # Rules are applied in priority order, and images matched by one rule are not counted by later rules
       {
         rulePriority = 1
-        description  = "prod で使ったイメージは新しい 50 個まで残す"
+        description  = "Keep up to the newest 50 images used in prod"
         selection = {
           tagStatus     = "tagged"
           tagPrefixList = ["release-"]
@@ -65,7 +65,7 @@ resource "aws_ecr_lifecycle_policy" "server" {
       },
       {
         rulePriority = 2
-        description  = "タグの無いイメージは 1 日で消す"
+        description  = "Delete untagged images after 1 day"
         selection = {
           tagStatus   = "untagged"
           countType   = "sinceImagePushed"
@@ -76,7 +76,7 @@ resource "aws_ecr_lifecycle_policy" "server" {
       },
       {
         rulePriority = 3
-        description  = "タグ付きは新しい 30 個だけ残す"
+        description  = "Keep only the newest 30 tagged images"
         selection = {
           tagStatus   = "any"
           countType   = "imageCountMoreThan"
@@ -89,6 +89,6 @@ resource "aws_ecr_lifecycle_policy" "server" {
 }
 
 output "server_repository_url" {
-  description = "ecspresso の task def の image に使う"
+  description = "Used for image in the ecspresso task def"
   value       = aws_ecr_repository.server.repository_url
 }

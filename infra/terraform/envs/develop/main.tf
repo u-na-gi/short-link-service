@@ -1,5 +1,5 @@
-# develop 環境。中身は modules/aws と modules/cloudflare に置き、ここは backend / provider / 環境ごとの値と
-# モジュール間のつなぎ (Tunnel と E2E 用サービストークンを Cloudflare から AWS の SSM へ) だけ持つ。
+# develop environment. The contents live in modules/aws and modules/cloudflare; this only holds backend / provider / per-environment values and
+# glue between modules (Tunnel and E2E service token from Cloudflare into AWS SSM).
 
 terraform {
   required_version = ">= 1.16"
@@ -36,31 +36,31 @@ provider "aws" {
   }
 }
 
-# API トークンは CLOUDFLARE_API_TOKEN (infra/.envrc.local) から読む
+# The API token is read from CLOUDFLARE_API_TOKEN (infra/.envrc.local)
 provider "cloudflare" {}
 
 variable "cloudflare_account_id" {
-  description = "TF_VAR_cloudflare_account_id (infra/.envrc.local) で渡す"
+  description = "Passed via TF_VAR_cloudflare_account_id (infra/.envrc.local)"
   type        = string
   sensitive   = true
 }
 
 variable "access_allowed_email" {
-  description = "Cloudflare Access でログインを許可するメールアドレス。TF_VAR_access_allowed_email (infra/.envrc.local) で渡す"
+  description = "Email address allowed to log in through Cloudflare Access. Passed via TF_VAR_access_allowed_email (infra/.envrc.local)"
   type        = string
   sensitive   = true
 }
 
 locals {
-  # Worker を公開するホスト名 (src/front/wrangler.jsonc の env.develop の routes と揃える)
+  # Hostname that serves the Worker (keep in sync with routes of env.develop in src/front/wrangler.jsonc)
   hostname = "s-dev.u-na-gi.com"
 
-  # サイトの公開 URL。Worker の routes と make e2e-remote の向き先
+  # Public URL of the site. Worker routes and the target of make e2e-remote
   public_base_url = "https://${local.hostname}"
 
-  # 短縮 URL のベース (Play の SHORTENER_BASE_URL)。要件の「短いURLのドメインは https://example.com/」に合わせる。
-  # 発行した短縮 URL は直接は開けず、サイトの復元フォームで戻す。自己参照の判定も example.com になるので、
-  # develop では s-dev.u-na-gi.com 宛の URL を短縮できてしまう (リダイレクトループは develop だけなので許容)
+  # Short URL base (Play's SHORTENER_BASE_URL). Matches the requirement "the short URL domain is https://example.com/".
+  # Issued short URLs cannot be opened directly; resolve them with the site's resolve form. Self-reference is also checked against example.com,
+  # so in develop URLs pointing to s-dev.u-na-gi.com can be shortened (the redirect loop only affects develop, so this is accepted)
   shortener_base_url = "https://example.com"
 }
 
@@ -82,13 +82,13 @@ module "cloudflare" {
   account_id = var.cloudflare_account_id
   hostname   = local.hostname
 
-  # Turnstile は staging / prod だけ
+  # Turnstile only in staging / prod
   turnstile_enabled = false
 
   access_allowed_email = var.access_allowed_email
 }
 
-# modules/app を modules/aws と modules/cloudflare に分けたときの付け替え
+# Moves from when modules/app was split into modules/aws and modules/cloudflare
 moved {
   from = module.app
   to   = module.aws

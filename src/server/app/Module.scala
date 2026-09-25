@@ -5,7 +5,9 @@ import javax.inject.Singleton
 import play.api.Configuration
 import service.DefaultShortLinkService
 
-/** ルートパッケージの `Module` は Play が自動で読み込む。trait と実装の紐付けはここに集約する。 */
+/** Play loads `Module` in the root package automatically. Bindings from traits to implementations
+  * live here.
+  */
 class Module extends AbstractModule {
 
   override def configure(): Unit = {
@@ -13,8 +15,8 @@ class Module extends AbstractModule {
     bind(classOf[ShortLinkService]).to(classOf[DefaultShortLinkService])
   }
 
-  /** 設定の読み出しをここに閉じ込め、ユースケースが Play の Configuration に依存しないようにする。
-    * 設定が壊れていたらリクエストを受ける前に起動を止めたいので、ここで検証する。
+  /** Reading the config is kept here so usecases do not depend on Play's Configuration. If the
+    * config is broken, we want to stop startup before taking requests, so validate it here.
     */
   @Provides
   @Singleton
@@ -26,7 +28,7 @@ class Module extends AbstractModule {
           throw configuration.reportError(
             "shortener.base-url",
             Module.describe(error),
-            // パースの失敗は元の例外を cause に付け、stack trace から原因を追えるようにする。
+            // Keep the original exception as the cause on a parse failure, so the stack trace shows the reason.
             PartialFunction.condOpt(error) { case PublicBaseUrl.Error.Malformed(cause) => cause }
           ),
         identity
@@ -48,7 +50,7 @@ class Module extends AbstractModule {
 
 object Module {
 
-  /** サーバのログにだけ出る (起動失敗) ので英語で書く。 */
+  /** Only shown in the server log (startup failure), so written in English. */
   private def describe(error: PublicBaseUrl.Error): String = error match {
     case PublicBaseUrl.Error.Malformed(cause)          => s"not a valid URL: ${cause.getMessage}"
     case PublicBaseUrl.Error.UnsupportedScheme(scheme) =>

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 
 <!-- https://www.playframework.com/documentation/latest/SettingsLogger -->
-<!-- 開発でも本番でも JSON で 1 行ずつ標準出力に出す。本番は CloudWatch Logs でそのまま項目検索できる。
-     手元で読むときは jq を通す (make logs-server)。 -->
+<!-- Write one JSON line per event to stdout in both dev and production. In production, fields are searchable in CloudWatch Logs as-is.
+     To read locally, pipe through jq (make logs-server). -->
 
 <!DOCTYPE configuration>
 
@@ -14,12 +14,12 @@
 
   <appender name="STDOUT" class="ConsoleAppender">
     <encoder class="LogstashEncoder">
-      <!-- Play が logback の context に入れる application.home が全行に付くので外す -->
+      <!-- Drop the context, or the application.home that Play puts in the logback context is added to every line -->
       <includeContext>false</includeContext>
-      <!-- 値を隠すのは logging.LogMasking が担う (出してよいキーだけ列挙する方式)。
-           ここ (9 系では jsonGeneratorDecorator ではなく decorator) は、URL をうっかりそのままログに渡したときの保険。
-           スキーム付きの URL (xxx://...) に見える文字列は、項目名や階層によらず、メッセージの中でも隠す。
-           項目名 (url など) で隠すと、LogMasking が部品 (ホストやパス) に分けて出す URL まで丸ごと隠れるため、値で見る。 -->
+      <!-- logging.LogMasking is responsible for hiding values (it lists only the keys that may be shown).
+           This (decorator in 9.x, not jsonGeneratorDecorator) is a safety net for when a URL is passed to a log by mistake.
+           Any string that looks like a URL with a scheme (xxx://...) is hidden, whatever the field name or depth, even inside the message.
+           Masking by field name (url etc.) would also hide the URLs that LogMasking splits into parts (host, path), so match on the value. -->
       <decorator class="MaskingJsonGeneratorDecorator">
         <defaultMask>***</defaultMask>
         <value>(?i)[a-z][a-z0-9+.-]*://\S*</value>
@@ -28,7 +28,7 @@
   </appender>
 
   <appender name="ASYNCSTDOUT" class="AsyncAppender">
-    <!-- 既定ではキューが混むと INFO 以下を捨てるので、アクセスログが欠けないよう捨てない -->
+    <!-- By default INFO and below are dropped when the queue is busy; never drop, so access logs are not lost -->
     <discardingThreshold>0</discardingThreshold>
     <appender-ref ref="STDOUT"/>
   </appender>

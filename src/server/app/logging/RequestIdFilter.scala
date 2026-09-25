@@ -7,13 +7,16 @@ import play.api.libs.typedmap.TypedKey
 import play.api.mvc._
 import scala.concurrent.ExecutionContext
 
-/** リクエストごとに ID を振り、リクエストの属性に入れてレスポンスの `X-Request-Id` で返す。
+/** Assigns an ID to each request, stores it in a request attribute, and returns it in the
+  * `X-Request-Id` response header.
   *
-  * Play の `request.id` はプロセス内の連番で、再起動のたびに 1 から振り直されるので、溜まったログの中で一意にならない。 送られてきた `X-Request-Id`
-  * は使わない。誰でも付けられるので、別のリクエストと同じ ID にされうる。
+  * Play's `request.id` is an in-process counter that restarts from 1 on every restart, so it is not
+  * unique across collected logs. An incoming `X-Request-Id` is not used: anyone can set it, so it
+  * could be made the same as another request's ID.
   *
-  * action で起きた例外は、ここで ID 付きのリクエストとして ErrorHandler に渡す。そのまま上に投げると Play は属性の無い元の リクエストで ErrorHandler
-  * を呼ぶので、スタックトレースのログに ID が付かない。
+  * Exceptions from the action are passed to ErrorHandler here with the request that has the ID. If
+  * rethrown as-is, Play calls ErrorHandler with the original request without the attribute, and the
+  * stack trace log gets no ID.
   */
 @Singleton
 class RequestIdFilter @Inject() (errorHandler: HttpErrorHandler)(using ExecutionContext)
@@ -32,6 +35,6 @@ object RequestId {
   val Key: TypedKey[String] = TypedKey("requestId")
   val Header = "X-Request-Id"
 
-  /** RequestIdFilter を通っていないリクエスト (テストで直接呼ぶときなど) では None */
+  /** None for requests that skipped RequestIdFilter (e.g. when called directly in tests) */
   def of(request: RequestHeader): Option[String] = request.attrs.get(Key)
 }

@@ -1,16 +1,16 @@
 # syntax=docker/dockerfile:1
-# 本番用 (ECS で動かすイメージ)。開発用の Dockerfile とは別。
+# For production (the image run on ECS). Separate from the development Dockerfile.
 #
 #   docker build --provenance=false --sbom=false -f Dockerfile.prod -t short-link-server .
 #
-# ECR に push するときは --provenance=false --sbom=false を付ける。付けないと BuildKit が attestation 付きの
-# image index を作り、タグは index に付いて実体のイメージはタグなしになる。ECR のライフサイクルルール
-# (タグなしは 1 日で消す) に実体を消され、タグ付きのイメージが壊れる。
+# Pass --provenance=false --sbom=false when pushing to ECR. Without them BuildKit creates an image index with
+# attestations, the tag goes on the index, and the actual image is untagged. The ECR lifecycle rule
+# (delete untagged after 1 day) then deletes the actual image and breaks the tagged one.
 #
-# sbt stage (Play 同梱の sbt-native-packager) で target/universal/stage に bin/ lib/ conf/ を作り、
-# JRE だけのイメージに載せる。ビルドコンテキストに入れるものは Dockerfile.prod.dockerignore が決める。
+# sbt stage (sbt-native-packager, bundled with Play) creates bin/ lib/ conf/ in target/universal/stage,
+# and we put them on a JRE-only image. Dockerfile.prod.dockerignore decides what goes into the build context.
 
-# JDK / sbt の版は開発用 (Dockerfile) と揃える
+# Keep the JDK / sbt versions the same as the development Dockerfile
 ARG JAVA_VERSION=21
 ARG SBT_VERSION=1.13.0
 
@@ -25,7 +25,7 @@ RUN curl -fsSL "https://github.com/sbt/sbt/releases/download/v${SBT_VERSION}/sbt
 
 WORKDIR /build
 
-# 依存の解決だけ先に済ませて層を分ける。ソースだけ変えたときは依存を落とし直さない
+# Resolve dependencies first in a separate layer, so changing only sources does not re-download them
 COPY build.sbt ./
 COPY project/build.properties project/plugins.sbt project/
 RUN sbt -batch update
@@ -33,15 +33,15 @@ RUN sbt -batch update
 COPY app app
 COPY conf conf
 RUN sbt -batch stage
-# 起動スクリプトは 0744 で作られる。所有者を root のままにして app ユーザーで動かすので、
-# 誰でも実行できるようにする。Windows 用の .bat は要らない
+# The start script is created as 0744. The owner stays root and it runs as the app user,
+# so make it executable by everyone. The Windows .bat is not needed
 RUN chmod 0755 target/universal/stage/bin/server \
     && rm target/universal/stage/bin/*.bat
 
 # --- runtime ------------------------------------------------------------------
 FROM eclipse-temurin:${JAVA_VERSION}-jre-noble
 
-# 公式イメージの ubuntu ユーザー (uid 1000) ではなく、専用のユーザーで動かす
+# Run as a dedicated user, not the official image's ubuntu user (uid 1000)
 RUN groupadd --system app && useradd --system --gid app --no-create-home app
 
 WORKDIR /opt/app
@@ -51,9 +51,9 @@ USER app
 
 EXPOSE 9000
 
-# JVM のヒープはコンテナのメモリ上限から決める
+# Size the JVM heap from the container memory limit
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75"
 
-# Play は起動時に RUNNING_PID を書き、残っていると次の起動を拒む。コンテナでは要らないので書かせない。
-# play.http.secret.key は PLAY_HTTP_SECRET_KEY 環境変数で渡す (conf/application.conf、ECS では SSM から注入)
+# Play writes RUNNING_PID on startup and refuses to start if it is left over. Not needed in a container, so disable it.
+# play.http.secret.key is passed via the PLAY_HTTP_SECRET_KEY env var (conf/application.conf; injected from SSM on ECS)
 CMD ["bin/server", "-Dpidfile.path=/dev/null"]

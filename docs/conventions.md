@@ -1,52 +1,52 @@
-# 開発規約と設計方針 (`docs/conventions.md`)
+# Development Conventions and Design Policies (`docs/conventions.md`)
 
-本リポジトリでコードやドキュメントを記述する際の方針、規約、および設計判断について説明します。
+This document describes the policies, conventions, and design decisions for writing code and documentation in this repository.
 
-## 目次
+## Table of Contents
 
-- [言語とコメントの規約](#言語とコメントの規約)
-- [エラーハンドリング方針 (例外の排除)](#エラーハンドリング方針-例外の排除)
-- [エラー情報の保護と文言設計](#エラー情報の保護と文言設計)
-- [ロギング規約](#ロギング規約)
-
----
-
-## 言語とコメントの規約
-
-- **ドキュメントとコメントは日本語**:
-  - 本リポジトリ内のドキュメント (Markdown) およびソースコード内のコメントは日本語を標準とします。
-- **「なぜそうするか」を記述する**:
-  - 単にコードの処理内容をなぞるだけのコメントは避け、「なぜその設計・アルゴリズムを選択したのか」「なぜその制約・回避策が必要なのか」という**設計意図や背景理由**を記述します。
-- **ログメッセージは英語**:
-  - サーバ内部で出力するログメッセージ（Logback）は英語で統一します。
+- [Language and Comment Conventions](#language-and-comment-conventions)
+- [Error Handling Policy (Eliminating Exceptions)](#error-handling-policy-eliminating-exceptions)
+- [Error Information Protection and Message Design](#error-information-protection-and-message-design)
+- [Logging Conventions](#logging-conventions)
 
 ---
 
-## エラーハンドリング方針 (例外の排除)
+## Language and Comment Conventions
 
-- **ビジネスロジックでの例外不使用**:
-  - ドメイン層 (`domain`) およびユースケース層 (`usecase`) では、業務エラーの表現に実行時例外をスロー（`throw`）しません。
-  - すべて `Either[ErrorEnum, Result]` の型シグネチャを用いて、型安全に失敗を表現・返却します。
-- **コントローラー層での一元ハンドリング**:
-  - ユースケースから返された `Either` のエラー Enum をコントローラー層で HTTP ステータスコードと JSON エラーコードにマッピングします。
-  - サーバ内の想定外の未処理例外は `ErrorHandler` が捕捉し、HTTP 500 (`internal_error`) として一元処理します。
-
----
-
-## エラー情報の保護と文言設計
-
-- **内部情報・入力値の非開示**:
-  - セキュリティ対策（情報漏洩やフィッシング対策）として、API のエラーレスポンスには例外メッセージ、スタックトレース、内部パラメータの上限値、および送信された入力値を含めません。
-  - 原則として `{"error": "<エラーコード>"}` の形式のみを返却します（`invalid_url` のみ、フロントエンドで案内を出し分けるため `reason` を付与）。
-- **利用者向けメッセージはフロントエンドで生成**:
-  - API から人間向けの日本語文言は返さず、フロントエンド側 (`src/front/src/api.ts`) がエラーコードを受け取って、利用者が次に何をすべきか直感的に理解できる案内メッセージを組み立てます。
+- **Documents, comments, test names, UI text, and CI names are written in English**:
+  - Documentation (Markdown), source code comments, test names, UI text, and CI names in this repository are standardized in English.
+- **Describe "why it is done"**:
+  - Avoid comments that merely trace code operations; describe the **design intent and background rationale**, such as "why that design/algorithm was chosen" or "why that constraint/workaround is necessary".
+- **Log messages stay English**:
+  - Log messages output inside the server (Logback) are unified in English.
 
 ---
 
-## ロギング規約
+## Error Handling Policy (Eliminating Exceptions)
 
-- **常に JSON 形式で出力**:
-  - 開発環境・本番環境を問わず、標準出力へ 1 リクエスト 1 行の JSON 形式で構造化ログを出力します (`logstash-logback-encoder`)。
-- **値のマスキング保護 (`LogMasking`)**:
-  - 元 URL のクエリパラメータ等にトークンや個人情報が含まれうるため、リクエストおよびレスポンスの Body やクエリは原則としてキー名のみを残し、値は `***` にマスクします。
-  - 値の出力を許可するフィールドはホワイトリスト形式（レスポンスの `error` と `code` のみ）で厳格に管理します。
+- **No exceptions in business logic**:
+  - In the domain layer (`domain`) and usecase layer (`usecase`), runtime exceptions are not thrown (`throw`) to represent business errors.
+  - All failures are represented and returned type-safely using the `Either[ErrorEnum, Result]` type signature.
+- **Unified handling at the controller layer**:
+  - The controller layer maps `Either` error enums returned by use cases to HTTP status codes and JSON error codes.
+  - Unexpected unhandled exceptions inside the server are caught by `ErrorHandler` and uniformly handled as HTTP 500 (`internal_error`).
+
+---
+
+## Error Information Protection and Message Design
+
+- **Non-disclosure of internal information and input values**:
+  - As a security measure (against information leakage and phishing), API error responses do not include exception messages, stack traces, internal parameter maximum limits, or submitted input values.
+  - As a rule, only the `{"error": "<error_code>"}` format is returned (only `invalid_url` includes `reason` so that the frontend can branch guidance messages).
+- **User-facing messages generated on the frontend**:
+  - The API does not return human-readable messages; instead, the frontend (`src/front/src/api.ts`) receives error codes and constructs guidance messages that let users intuitively understand what to do next.
+
+---
+
+## Logging Conventions
+
+- **Always output in JSON format**:
+  - Regardless of dev or production environments, structured logs are output to stdout at one JSON line per request (`logstash-logback-encoder`).
+- **Value masking protection (`LogMasking`)**:
+  - Because query parameters of original URLs may contain tokens or personal information, request and response bodies and queries retain only key names as a rule, masking values with `***`.
+  - Allowed fields for value output are strictly managed via an allowlist (only `error` and `code` in responses).

@@ -6,23 +6,25 @@ import scala.concurrent.{ExecutionContext, Future}
 
 enum ResolveShortLinkError {
 
-  /** 自サービスの短縮 URL の形ではない。 */
+  /** Not in the form of a short URL of this service. */
   case NotShortUrl
 
-  /** 形は正しいが発行されていない。インメモリなので、再起動で消えた場合もここになる。 */
+  /** The form is correct but it was never issued. Storage is in memory, so links lost on restart
+    * also end up here.
+    */
   case NotFound
 }
 
-/** 短縮URLから発行済みのリンクを引く。 */
+/** Looks up an issued link from a short URL. */
 @Singleton
 class ResolveShortLink @Inject() (repository: ShortLinkRepository, baseUrl: PublicBaseUrl)(implicit
     ec: ExecutionContext
 ) {
 
-  /** コードで引く。短縮URLへのアクセス (`GET /:code`) からリダイレクトするときに使う。 */
+  /** Looks up by code. Used to redirect on access to a short URL (`GET /:code`). */
   def execute(code: String): Future[Option[ShortLink]] = repository.findByCode(code)
 
-  /** 利用者が貼り付けた短縮URLの文字列から引く。 */
+  /** Looks up from a short URL string pasted by the user. */
   def fromShortUrl(rawShortUrl: String): Future[Either[ResolveShortLinkError, ShortLink]] =
     baseUrl.codeOf(rawShortUrl) match {
       case None       => Future.successful(Left(ResolveShortLinkError.NotShortUrl))

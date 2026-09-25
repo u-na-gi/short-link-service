@@ -2,23 +2,26 @@ package domain
 
 import scala.concurrent.Future
 
-/** 検証済みの Url に一意なコードを振り、保存まで行う。
+/** Assigns a unique code to a validated Url and saves it.
   *
-  * 重複の避け方 (乱数なら採番し直し、連番なら不要) は採番方式次第なので、ユースケースでなく実装側に置く。
+  * How to avoid duplicates (retry for random codes, nothing for sequential ones) depends on how
+  * codes are generated, so it belongs in the implementation, not the usecase.
   */
 trait ShortLinkService {
 
-  /** 同じ URL が並行リクエストで先に登録されていたら、新しく振らずにそのリンクを返す。 */
+  /** If a concurrent request already registered the same URL, returns that link instead of a new
+    * code.
+    */
   def issue(url: Url): Future[Either[ShortLinkService.Error, ShortLink]]
 }
 
 object ShortLinkService {
   enum Error {
 
-    /** 採番を上限回数やり直しても空きコードが取れなかった。 */
+    /** No free code was found even after retrying the maximum number of times. */
     case CodeExhausted
 
-    /** 保存できる件数の上限に達している。 */
+    /** The limit on the number of stored links has been reached. */
     case StorageFull
   }
 }

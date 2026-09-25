@@ -1,23 +1,23 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// Play の開発サーバ。フロントと同じオリジンに見せるため、API と短縮 URL だけをここへ流す。
+// The Play dev server. Only the API and short URLs are sent here, so they look like the same origin as the front end.
 const api = process.env.API_ORIGIN ?? "http://localhost:9000";
 
 export default defineConfig({
   plugins: [react()],
   server: {
-    // devcontainer の外 (ホストのブラウザ) から VS Code のポート転送で届くように全インタフェースで待ち受ける。
-    // 既定の localhost だと ::1 だけになり、127.0.0.1 へ繋ぎに来る転送が届かないことがある。
+    // Listen on all interfaces so VS Code port forwarding can reach it from outside the devcontainer (the host browser).
+    // The default localhost binds only ::1, and forwarding that connects to 127.0.0.1 may not reach it.
     host: true,
     port: 5173,
     strictPort: true,
-    // E2E 用の compose では runn がサービス名 front で来る。Vite は既定で localhost 以外の Host を弾く
+    // In the E2E compose, runn connects with the service name front. By default Vite rejects Hosts other than localhost
     allowedHosts: ["front"],
     proxy: {
       "/api": api,
-      // 短縮 URL (/{英数 8 文字}) は Play のリダイレクトへ。本番の CloudFront の /???????? と同じ振り分け。
-      // Vite 自身のパス (/src/…, /@vite/…, /favicon.svg など) は長さか記号で外れる。
+      // Short URLs (/{8 alphanumeric chars}) go to the Play redirect. Same routing as /???????? on CloudFront in production.
+      // Vite's own paths (/src/…, /@vite/…, /favicon.svg, etc.) do not match because of their length or symbols.
       "^/[A-Za-z0-9]{8}(\\?.*)?$": api,
     },
   },

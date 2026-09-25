@@ -9,14 +9,14 @@ import play.api.test._
 import play.api.test.Helpers._
 import support.LogCapture
 
-/** アプリを起動してリクエストを流し、access ロガーに出た JSON を検証する。 */
+/** Starts the app, sends requests, and checks the JSON written to the access logger. */
 class AccessLogFilterSpec extends PlaySpec with GuiceOneAppPerTest {
 
   private def captureAccessLog(run: => Unit): Seq[JsValue] = LogCapture.capture("access")(run)._2
 
   "AccessLogFilter" should {
 
-    "URL は部品に分けてクエリの値だけ隠し、レスポンスは error と code も値を出す" in {
+    "split URLs into parts hiding only query values, and show error and code values in the response" in {
       val (result, logs) = LogCapture.capture("access") {
         val result = route(
           app,
@@ -45,13 +45,13 @@ class AccessLogFilterSpec extends PlaySpec with GuiceOneAppPerTest {
       (log \ "requestBody").as[JsValue] mustBe Json.obj("url" -> original)
       (log \ "responseBody" \ "code").as[String] must have length 8
       (log \ "responseBody" \ "originalUrl").as[JsValue] mustBe original
-      // テストの shortener.base-url は既定の http://localhost:5173
+      // shortener.base-url in tests is the default http://localhost:5173
       (log \ "responseBody" \ "shortUrl" \ "host").as[String] mustBe "localhost"
       (log \ "responseBody" \ "shortUrl" \ "port").as[Int] mustBe 5173
       log.toString must not include "secret"
     }
 
-    "業務エラーは error の値が出て、クエリの値は隠す" in {
+    "show the error value for a business error and hide query values" in {
       val logs = captureAccessLog {
         val result = route(
           app,
@@ -77,7 +77,7 @@ class AccessLogFilterSpec extends PlaySpec with GuiceOneAppPerTest {
       log.toString must (not include "secret00" and not include "secret01")
     }
 
-    "JSON として読めない body は中身を出さずサイズだけ出す" in {
+    "log only the size, not the content, of a body that is not valid JSON" in {
       val logs = captureAccessLog {
         val result = route(
           app,
@@ -94,7 +94,7 @@ class AccessLogFilterSpec extends PlaySpec with GuiceOneAppPerTest {
       log.toString must not include "secret"
     }
 
-    "ヘルスチェックは INFO では出さない" in {
+    "not log health checks at INFO" in {
       val logs = captureAccessLog {
         status(route(app, FakeRequest(GET, "/api/v1/health")).get) mustBe OK
       }
@@ -102,7 +102,7 @@ class AccessLogFilterSpec extends PlaySpec with GuiceOneAppPerTest {
       logs mustBe empty
     }
 
-    "URL をそのままログに渡しても、logback.xml の保険で項目名によらず隠れる" in {
+    "hide a URL passed to the log as-is, whatever the field name, via the logback.xml safety net" in {
       val logs = captureAccessLog {
         LoggerFactory
           .getLogger("access")

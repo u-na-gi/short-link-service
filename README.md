@@ -1,47 +1,47 @@
 # short-link-service
 
-URL を短縮し、短縮 URL から元の URL へのリダイレクトおよび復元を行う Web サービスです。
+A web service that shortens URLs and handles redirection and resolution from short URLs back to original URLs.
 
-## 目次
+## Table of Contents
 
-- [サービス要件](#サービス要件)
-- [システム構成とドキュメント](#システム構成とドキュメント)
-- [デプロイ済みの環境](#デプロイ済みの環境)
-- [クイックスタート](#クイックスタート)
-
----
-
-## サービス要件
-
-本サービスは以下の要件に基づいて実装されています。
-
-- **URL 短縮**: 元 URL を短い URL に変換する。
-- **URL 復元**: 短縮 URL を入力して元 URL を取得する。
-- **リダイレクト**: 短縮 URL へのアクセスを元 URL へ 302 リダイレクトする。
-- **同一 URL の同一コード返却**: 同じ元 URL が指定された場合は、常に同じ短縮 URL を返す（重複登録しない）。
-- **データ永続化不要**: リンクデータはインメモリで管理（サービス停止・再起動で消えてよい）。
-- **短縮 URL のドメイン**: `https://example.com/`。
-- **短縮コードの形式**: ランダムな英数字 8 文字（例: `https://www.example.org/` → `https://example.com/Xk3pR8vN`）。
+- [Service Requirements](#service-requirements)
+- [System Architecture and Documentation](#system-architecture-and-documentation)
+- [Deployed Environments](#deployed-environments)
+- [Quickstart](#quickstart)
 
 ---
 
-## システム構成とドキュメント
+## Service Requirements
 
-本リポジトリは、フロントエンド、バックエンド API サーバ、および E2E テストシナリオで構成されています。それぞれの詳細な仕様や開発手順、設計方針は各ドキュメントを参照してください。
+This service is implemented based on the following requirements:
+
+- **URL shortening**: Convert original URLs to short URLs.
+- **URL resolution**: Input a short URL to retrieve the original URL.
+- **Redirection**: 302 redirect visits on short URLs to original URLs.
+- **Same code returned for same URL**: If the same original URL is specified, always return the same short URL (no duplicate registration).
+- **No data persistence required**: Link data is managed in-memory (may disappear on service stop or restart).
+- **Short URL domain**: `https://example.com/`.
+- **Short code format**: 8 random alphanumeric characters (e.g., `https://www.example.org/` → `https://example.com/Xk3pR8vN`).
+
+---
+
+## System Architecture and Documentation
+
+This repository consists of a frontend, a backend API server, and E2E test scenarios. Refer to each document for detailed specifications, development steps, and design policies.
 
 ```mermaid
 flowchart LR
-    subgraph Client ["クライアント"]
-        Browser["ブラウザ"]
-        Runn["E2E テスト (runn)"]
+    subgraph Client ["Client"]
+        Browser["Browser"]
+        Runn["E2E Tests (runn)"]
     end
 
-    subgraph Front ["フロントエンド (Vite :5173)"]
+    subgraph Front ["Frontend (Vite :5173)"]
         ReactApp["React SPA"]
         Proxy["Vite Proxy (/api/*, /{code})"]
     end
 
-    subgraph Server ["バックエンド (Play :9000)"]
+    subgraph Server ["Backend (Play :9000)"]
         LinkAPI["LinkController (JSON API / Redirect)"]
         MemoryStore[("InMemory Repository")]
     end
@@ -53,53 +53,53 @@ flowchart LR
     LinkAPI --> MemoryStore
 ```
 
-| 対象                         | ドキュメント                                                       | 役割と技術スタック                                                                                                                  |
-| ---------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **API サーバ**               | [src/server/README.md](src/server/README.md)                       | Scala 3.3.6 + Play Framework 3.0.11 (sbt 1.13.0)、JDK 21。JSON API 専用。HTTP API 仕様、コアドメインロジック、ログ設計、ScalaTest。 |
-| **画面**                     | [src/front/README.md](src/front/README.md)                         | React 19 + TypeScript 7 + Vite 8 (Bun)。ログイン不要の 1 画面 SPA。Vite プロキシ設定、画面仕様、クライアントバリデーション。        |
-| **E2E テスト**               | [tests/README.md](tests/README.md)                                 | [runn](https://github.com/k1LoW/runn) (YAML runbook)。実際に起動したサービスに対する外側からの結合・疎通テストシナリオ。            |
-| **開発環境ガイド**           | [docs/development.md](docs/development.md)                         | Docker Compose やローカル直接起動の手順、ホットリロード、環境変数、Devcontainer の詳細設定。                                        |
-| **運用・本番アーキテクチャ** | [docs/production-architecture.md](docs/production-architecture.md) | 単一プロセス制約（インメモリ保持）、本番構成 (Cloudflare Worker + Tunnel + ECS on Fargate)、CI / CD、リリース・E2E・destroy の手順。 |
-| **開発規約・設計方針**       | [docs/conventions.md](docs/conventions.md)                         | コメント・ドキュメントの言語方針、例外不使用のエラーハンドリング、情報保護、ロギング規約。                                          |
+| Target | Documentation | Role and Tech Stack |
+| --- | --- | --- |
+| **API Server** | [src/server/README.md](src/server/README.md) | Scala 3.3.6 + Play Framework 3.0.11 (sbt 1.13.0), JDK 21. JSON API only. HTTP API specifications, core domain logic, logging design, ScalaTest. |
+| **Frontend** | [src/front/README.md](src/front/README.md) | React 19 + TypeScript 7 + Vite 8 (Bun). Single-page SPA without login. Vite proxy configuration, UI specifications, client validation. |
+| **E2E Tests** | [tests/README.md](tests/README.md) | [runn](https://github.com/k1LoW/runn) (YAML runbook). External integration and connectivity test scenarios against running services. |
+| **Development Guide** | [docs/development.md](docs/development.md) | Procedures for Docker Compose and direct local startup, hot reload, environment variables, detailed Devcontainer setup. |
+| **Production Architecture** | [docs/production-architecture.md](docs/production-architecture.md) | Single-process constraint (in-memory retention), production setup (Cloudflare Worker + Tunnel + ECS on Fargate), CI/CD, procedures for release, E2E, and destroy. |
+| **Conventions and Design Policy** | [docs/conventions.md](docs/conventions.md) | Language policy for comments and documentation, error handling without exceptions, information protection, logging conventions. |
 
 ---
 
-## デプロイ済みの環境
+## Deployed Environments
 
-> **このサービスは停止しています (2026-09-25)。** 3 環境とも AWS の ECS と Cloudflare の Worker / Tunnel / Access を削除したので、下の URL にはつながりません。下の表は稼働していたときの記録です。作り直す手順は [docs/production-architecture.md](docs/production-architecture.md) を参照してください。
+> **This service is suspended (2026-09-25).** AWS ECS and Cloudflare Worker / Tunnel / Access have been removed across all 3 environments, so the URLs below cannot be reached. Automatic deployment (the `deploy` workflow) is disabled. The table below is a record of when it was running. See [docs/production-architecture.md](docs/production-architecture.md) for recreate procedures.
 
-| 環境    | URL                                                    | 出すきっかけ                     | 公開範囲                         | 短縮 URL のドメイン          |
-| ------- | ------------------------------------------------------ | -------------------------------- | -------------------------------- | ---------------------------- |
-| develop | `https://s-dev.u-na-gi.com`                            | `develop` ブランチへの push      | Cloudflare Access でログイン必須 | `https://example.com` (要件) |
-| staging | `https://s-stg.u-na-gi.com`                            | `main` ブランチへの push         | Cloudflare Access でログイン必須 | サイトと同じ                 |
-| prod    | `https://s.u-na-gi.com`                                | `v*` タグ (オーナーの承認が必要) | 公開                             | サイトと同じ                 |
+| Environment | URL | Trigger | Access Scope | Short URL Domain |
+| --- | --- | --- | --- | --- |
+| develop | `https://s-dev.u-na-gi.com` | push to `develop` branch | Login required via Cloudflare Access | `https://example.com` (Requirement) |
+| staging | `https://s-stg.u-na-gi.com` | push to `main` branch | Login required via Cloudflare Access | Same as site |
+| prod | `https://s.u-na-gi.com` | `v*` tag (Requires owner approval) | Public | Same as site |
 
-- develop が発行する短縮 URL (`https://example.com/xxxxxxxx`) は直接は開けません。サイトの復元フォームで元の URL に戻します。
-- ホスト名は `infra/terraform/envs/<env>/main.tf` の `hostname` と `src/front/wrangler.jsonc` の `routes` の 2 か所にあり、揃えておく必要があります (deploy 時に検査)。短縮 URL のドメインは `infra/terraform/envs/<env>` の output `shortener_base_url` です。
+- Short URLs issued by develop (`https://example.com/xxxxxxxx`) cannot be opened directly. Restore them to the original URL using the resolve form on the site.
+- The hostname appears in two places: `hostname` in `infra/terraform/envs/<env>/main.tf` and `routes` in `src/front/wrangler.jsonc`, and must match (checked on deploy). The short URL domain is the `shortener_base_url` output of `infra/terraform/envs/<env>`.
 
 ---
 
-## クイックスタート
+## Quickstart
 
-Docker Compose を使用して開発環境を起動します。
+Start the development environment using Docker Compose.
 
 ```sh
-# 1. 環境変数の設定 (初回のみ)
+# 1. Configure environment variables (first time only)
 cp .env.example .env
 
-# 2. 開発環境の起動
+# 2. Start the development environment
 make up
 
-# 3. ログの確認
-make logs-server   # server の JSON ログを jq で整形表示
+# 3. View logs
+make logs-server   # Format and display server JSON logs with jq
 
-# 4. 停止
+# 4. Stop
 make down
 ```
 
-- **フロントエンド画面**: [http://localhost:5173](http://localhost:5173)
-- **API サーバ (Play)**: [http://localhost:9000](http://localhost:9000)
+- **Frontend UI**: [http://localhost:5173](http://localhost:5173)
+- **API Server (Play)**: [http://localhost:9000](http://localhost:9000)
 
 > [!NOTE]
-> 初回起動時、Play Framework のコンパイルにより最初のリクエストへの応答に数分かかる場合があります。
-> 詳細な開発環境のセットアップやホスト上での直接起動手順については、[docs/development.md](docs/development.md) を参照してください。
+> On initial startup, Play Framework compilation may take a few minutes before responding to the first request.
+> For detailed development environment setup and instructions on running directly on the host, see [docs/development.md](docs/development.md).
