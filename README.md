@@ -66,7 +66,7 @@ flowchart LR
 
 ## Deployed Environments
 
-> **This service is suspended (2026-09-25).** All AWS resources (including ECR and the Terraform state bucket), the Cloudflare Worker / Tunnel / Access, and the GitHub Environments have been removed, so the URLs below cannot be reached. Automatic deployment (the `deploy` workflow) is disabled. The table below is a record of when it was running. See [docs/production-architecture.md](docs/production-architecture.md) for recreate procedures.
+> **This service is suspended (2026-09-25).** All AWS resources (including ECR and the Terraform state bucket), the Cloudflare Worker / Tunnel / Access, and the GitHub Environments have been removed, so the URLs below cannot be reached. The `deploy` and `plan` workflows are disabled. The table below is a record of when it was running. See [docs/production-architecture.md](docs/production-architecture.md) for recreate procedures.
 
 | Environment | URL | Trigger | Access Scope | Short URL Domain |
 | --- | --- | --- | --- | --- |

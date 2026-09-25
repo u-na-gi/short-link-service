@@ -1,0 +1,21 @@
+# Secrets for working under infra/ from your machine. Copy this file to infra/.envrc.local
+# (gitignored) and fill in the values; infra/.envrc loads it through direnv.
+# The repository is public, so never commit the real values (CI runs gitleaks).
+# What each token needs and where the values end up: docs/production-architecture.md "What You Need to Deploy".
+
+# Cloudflare API token for local Terraform (envs/*) and wrangler (make deploy-front).
+# Same permissions as the CI deploy token below.
+export CLOUDFLARE_API_TOKEN=
+# Cloudflare account ID (dashboard > Account home > Account ID). Read by wrangler and the Cloudflare provider.
+export CLOUDFLARE_ACCOUNT_ID=
+# The same account ID, for the cloudflare_account_id variable of infra/terraform/envs/*.
+export TF_VAR_cloudflare_account_id=
+# The one email address that may log in through Cloudflare Access on develop / staging (one-time PIN).
+export TF_VAR_access_allowed_email=
+
+# Only needed when applying infra/terraform/github: the tokens stored as GitHub Environment secrets for CI.
+# Deploy token (develop / staging / prod Environments): the same permissions as CLOUDFLARE_API_TOKEN.
+export TF_VAR_ci_cloudflare_deploy_token=
+# Plan token (plan Environment): read-only, except Cloudflare Tunnel:Edit (the data source that reads the
+# Tunnel token needs Edit even during plan).
+export TF_VAR_ci_cloudflare_plan_token=
